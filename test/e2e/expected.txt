@@ -1,0 +1,58 @@
+# cluster rule kind namespace name — every line must be in the scan result.
+a pod.crashloop Deployment k0sm-e2e crashloop
+a pod.crashloop Deployment k0sm-e2e dep-api
+a pod.crashloop Deployment k0sm-e2e dep-db
+a pod.crashloop Deployment k0sm-e2e rollout-bad
+a deploy.unavailable Deployment k0sm-e2e crashloop
+a svc.no-endpoints Service k0sm-e2e crashloop
+a pod.oomkilled Deployment k0sm-e2e oom
+a pod.image-pull Deployment k0sm-e2e image-missing
+a pod.unschedulable Deployment k0sm-e2e too-big
+a pvc.pending PersistentVolumeClaim k0sm-e2e data-no-sc
+a pod.unschedulable Deployment k0sm-e2e pvc-user
+a svc.selector-mismatch Service k0sm-e2e no-backend
+a dns.unhealthy Deployment kube-system coredns
+a sc.no-default StorageClass - (default)
+a pod.config-error Deployment k0sm-e2e config-missing
+a pod.stuck-creating Deployment k0sm-e2e mount-missing
+a pod.not-ready Deployment k0sm-e2e never-ready
+a deploy.unavailable Deployment k0sm-e2e never-ready
+a pod.probe-kills Deployment k0sm-e2e liveness-fail
+a pod.stuck-terminating Pod k0sm-e2e stuck-finalizer
+a sts.unavailable StatefulSet k0sm-e2e sts-broken
+a job.failed Job k0sm-e2e job-fails
+a cronjob.failing CronJob k0sm-e2e cron-fails
+a lb.pending Service k0sm-e2e lb-waits
+a ingress.backend-missing Ingress k0sm-e2e broken-routes
+a webhook.blocking ValidatingWebhookConfiguration - k0sm-e2e-guard
+b node.not-ready Node - k0sm-fake-down
+b node.pressure Node - k0sm-fake-pressure
+b node.npd-condition Node - k0sm-fake-pressure
+b node.cordoned-long Node - k0sm-fake-pressure
+c cluster.unreachable Cluster - c
+d cluster.unreachable Cluster - d
+# Metrics from the cluster's Prometheus (test/scenarios/metrics.yaml).
+a pvc.usage PersistentVolumeClaim k0sm-e2e fill-data
+a container.near-limit Deployment k0sm-e2e memhog
+a node.fs-high Node - k0sm-a
+a vm.cpu-steal Node - k0sm-a
+a vm.clock-skew Node - k0sm-a
+a vm.service-down Node - k0sm-a
+a vm.kernel-errors Node - k0sm-a
+
+# Control plane: a controller lease left by a stopped controller (run.sh).
+a controllers.count Controller - k0sm-gone
+# k0s: an Autopilot plan naming a node that doesn't exist (run.sh), and a
+# cluster configured with another k0s version than it runs.
+a k0s.update-stuck Plan - autopilot
+# A k0s Helm add-on whose repository doesn't exist (run.sh).
+a k0s.chart-failed Chart kube-system k0s-addon-chart-e2e-missing
+b k0s.version-drift K0s - version
+# Good practices (suggestions, not problems).
+a hygiene.no-limits Namespace - k0sm-e2e
+a hygiene.no-probes Namespace - k0sm-e2e
+a hygiene.latest-tag Namespace - k0sm-e2e
+a hygiene.pdb-blocks-drain Namespace - k0sm-e2e
+a hygiene.privileged Namespace - k0sm-e2e
+# An app's certificate that expires in 5 days (run.sh makes it).
+a tls.cert-expiry Secret k0sm-e2e shop-tls

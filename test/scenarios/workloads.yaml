@@ -1,0 +1,407 @@
+# Broken on purpose: scenarios for the workload, storage, network and
+# control-plane rules that a single-node k0s can show.
+# Applied to e2e cluster "a". Never apply this to a real cluster.
+apiVersion: v1
+kind: Namespace
+metadata: {name: k0sm-e2e}
+---
+# W01 pod.crashloop, with W12 deploy.unavailable and X01 svc.no-endpoints
+# folded under it.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: crashloop, namespace: k0sm-e2e}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: crashloop}}
+  template:
+    metadata: {labels: {app: crashloop}}
+    spec:
+      containers:
+      - name: app
+        image: busybox:1.36
+        command: ["sh", "-c", "echo starting; echo 'FATAL cannot reach database'; exit 1"]
+        resources: {requests: {cpu: 10m, memory: 16Mi}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: crashloop, namespace: k0sm-e2e}
+spec:
+  selector: {app: crashloop}
+  ports: [{port: 80}]
+---
+# W01 explained by the log: dep-api can't reach dep-db, which crashes
+# itself on the ownership of its data, so dep-api folds under dep-db.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: dep-db, namespace: k0sm-e2e}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: dep-db}}
+  template:
+    metadata: {labels: {app: dep-db}}
+    spec:
+      containers:
+      - name: db
+        image: busybox:1.36
+        command: ["sh", "-c", "echo 'FATAL:  data directory \"/var/lib/postgresql/data\" has wrong ownership'; exit 1"]
+        resources: {requests: {cpu: 10m, memory: 16Mi}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: dep-db, namespace: k0sm-e2e}
+spec:
+  selector: {app: dep-db}
+  ports: [{port: 5432}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: dep-api, namespace: k0sm-e2e}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: dep-api}}
+  template:
+    metadata: {labels: {app: dep-api}}
+    spec:
+      containers:
+      - name: api
+        image: busybox:1.36
+        command: ["sh", "-c", "echo 'ERROR db: dial tcp dep-db:5432: connect: connection refused'; exit 1"]
+        resources: {requests: {cpu: 10m, memory: 16Mi}}
+---
+# W01 after an update: this first revision runs; run.sh then rolls out a
+# second one without DATABASE_URL, which crashes. The problem names the
+# update, what it changed (the password in the URL masked) and how to undo
+# it.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: rollout-bad, namespace: k0sm-e2e}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: rollout-bad}}
+  template:
+    metadata: {labels: {app: rollout-bad}}
+    spec:
+      containers:
+      - name: web
+        image: busybox:1.36
+        command: ["sh", "-c", "sleep 100000"]
+        env: [{name: DATABASE_URL, value: "postgres://web:hunter22@dep-db:5432/web"}]
+        resources: {requests: {cpu: 10m, memory: 16Mi}}
+---
+# W02 pod.oomkilled: tail buffers /dev/zero until the memory limit is hit.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: oom, namespace: k0sm-e2e}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: oom}}
+  template:
+    metadata: {labels: {app: oom}}
+    spec:
+      containers:
+      - name: hog
+        image: busybox:1.36
+        command: ["sh", "-c", "tail /dev/zero"]
+        resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {memory: 32Mi}}
+---
+# W03 pod.image-pull: the tag does not exist.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: image-missing, namespace: k0sm-e2e}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: image-missing}}
+  template:
+    metadata: {labels: {app: image-missing}}
+    spec:
+      containers:
+      - name: app
+        image: busybox:k0sm-e2e-does-not-exist
+        resources: {requests: {cpu: 10m, memory: 16Mi}}
+---
+# W06 pod.unschedulable: asks for more CPU than any node has.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: too-big, namespace: k0sm-e2e}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: too-big}}
+  template:
+    metadata: {labels: {app: too-big}}
+    spec:
+      containers:
+      - name: app
+        image: busybox:1.36
+        command: ["sleep", "3600"]
+        resources: {requests: {cpu: "64", memory: 16Mi}}
+---
+# S03 pvc.pending: a fresh k0s has no default StorageClass. The pod that
+# uses the claim cannot be scheduled; that is folded under the claim.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: data-no-sc, namespace: k0sm-e2e}
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: {requests: {storage: 1Gi}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: pvc-user, namespace: k0sm-e2e}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: pvc-user}}
+  template:
+    metadata: {labels: {app: pvc-user}}
+    spec:
+      containers:
+      - name: app
+        image: busybox:1.36
+        command: ["sleep", "3600"]
+        resources: {requests: {cpu: 10m, memory: 16Mi}}
+        volumeMounts: [{name: data, mountPath: /data}]
+      volumes:
+      - name: data
+        persistentVolumeClaim: {claimName: data-no-sc}
+---
+# X01 svc.no-endpoints: the selector matches nothing.
+apiVersion: v1
+kind: Service
+metadata: {name: no-backend, namespace: k0sm-e2e}
+spec:
+  selector: {app: does-not-exist}
+  ports: [{port: 80}]
+---
+# ---------------------------------------------------------------- M1 rules
+# W04 pod.config-error: the Secret the container reads does not exist.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: config-missing, namespace: k0sm-e2e}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: config-missing}}
+  template:
+    metadata: {labels: {app: config-missing}}
+    spec:
+      containers:
+      - name: app
+        image: busybox:1.36
+        command: ["sleep", "3600"]
+        env: [{name: DB_PASSWORD, valueFrom: {secretKeyRef: {name: k0sm-missing, key: password}}}]
+        resources: {requests: {cpu: 10m, memory: 16Mi}}
+---
+# W07 pod.stuck-creating: a mounted ConfigMap does not exist.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: mount-missing, namespace: k0sm-e2e}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: mount-missing}}
+  template:
+    metadata: {labels: {app: mount-missing}}
+    spec:
+      containers:
+      - name: app
+        image: busybox:1.36
+        command: ["sleep", "3600"]
+        resources: {requests: {cpu: 10m, memory: 16Mi}}
+        volumeMounts: [{name: cfg, mountPath: /cfg}]
+      volumes:
+      - name: cfg
+        configMap: {name: k0sm-no-such-configmap}
+---
+# W09 pod.not-ready, with W12 deploy.unavailable folded under it.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: never-ready, namespace: k0sm-e2e}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: never-ready}}
+  template:
+    metadata: {labels: {app: never-ready}}
+    spec:
+      containers:
+      - name: app
+        image: busybox:1.36
+        command: ["sleep", "3600"]
+        readinessProbe: {exec: {command: ["false"]}, periodSeconds: 2}
+        resources: {requests: {cpu: 10m, memory: 16Mi}}
+---
+# W10 pod.probe-kills: the liveness probe always fails. Not a crash loop.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: liveness-fail, namespace: k0sm-e2e}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: liveness-fail}}
+  template:
+    metadata: {labels: {app: liveness-fail}}
+    spec:
+      terminationGracePeriodSeconds: 1
+      containers:
+      - name: app
+        image: busybox:1.36
+        command: ["sleep", "3600"]
+        livenessProbe: {exec: {command: ["false"]}, initialDelaySeconds: 1, periodSeconds: 3, failureThreshold: 1}
+        resources: {requests: {cpu: 10m, memory: 16Mi}}
+---
+# W08 pod.stuck-terminating: run.sh deletes this pod; the finalizer keeps it.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: stuck-finalizer
+  namespace: k0sm-e2e
+  finalizers: [k0sm.io/e2e-hold]
+spec:
+  terminationGracePeriodSeconds: 1
+  containers:
+  - name: app
+    image: busybox:1.36
+    command: ["sleep", "3600"]
+    resources: {requests: {cpu: 10m, memory: 16Mi}}
+---
+# W13 sts.unavailable: its only pod never becomes ready.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: {name: sts-broken, namespace: k0sm-e2e}
+spec:
+  replicas: 1
+  serviceName: sts-broken
+  selector: {matchLabels: {app: sts-broken}}
+  template:
+    metadata: {labels: {app: sts-broken}}
+    spec:
+      containers:
+      - name: app
+        image: busybox:1.36
+        command: ["sleep", "3600"]
+        readinessProbe: {exec: {command: ["false"]}, periodSeconds: 2}
+        resources: {requests: {cpu: 10m, memory: 16Mi}}
+---
+# W14 job.failed: exits with code 3, no retries.
+apiVersion: batch/v1
+kind: Job
+metadata: {name: job-fails, namespace: k0sm-e2e}
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - {name: app, image: busybox:1.36, command: ["sh", "-c", "echo 'ERROR migration failed'; exit 3"], resources: {requests: {cpu: 10m, memory: 16Mi}}}
+---
+# W14 cronjob.failing: every run fails.
+apiVersion: batch/v1
+kind: CronJob
+metadata: {name: cron-fails, namespace: k0sm-e2e}
+spec:
+  schedule: "* * * * *"
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+          - {name: app, image: busybox:1.36, command: ["sh", "-c", "exit 1"], resources: {requests: {cpu: 10m, memory: 16Mi}}}
+---
+# A healthy app for the Services below.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: healthy-web, namespace: k0sm-e2e}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: healthy-web}}
+  template:
+    metadata: {labels: {app: healthy-web}}
+    spec:
+      containers:
+      - {name: app, image: busybox:1.36, command: ["sleep", "3600"], resources: {requests: {cpu: 10m, memory: 16Mi}}}
+---
+# X08 lb.pending: k0s ships no load balancer, so this never gets an address.
+apiVersion: v1
+kind: Service
+metadata: {name: lb-waits, namespace: k0sm-e2e}
+spec:
+  type: LoadBalancer
+  selector: {app: healthy-web}
+  ports: [{port: 80}]
+---
+# X03 ingress.backend-missing: routes to a Service that does not exist.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: broken-routes, namespace: k0sm-e2e}
+spec:
+  rules:
+  - host: shop.k0sm-e2e.invalid
+    http:
+      paths:
+      - {path: /, pathType: Prefix, backend: {service: {name: k0sm-no-such-service, port: {number: 80}}}}
+---
+# C05 webhook.blocking: failurePolicy Fail, and its Service has no endpoints.
+# It only matches namespaces with a label none has, so it blocks nothing.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata: {name: k0sm-e2e-guard}
+webhooks:
+- name: guard.k0sm-e2e.invalid
+  failurePolicy: Fail
+  sideEffects: None
+  admissionReviewVersions: [v1]
+  clientConfig: {service: {namespace: k0sm-e2e, name: no-backend}}
+  namespaceSelector: {matchLabels: {k0sm-e2e-guarded: "true"}}
+  rules: [{operations: [CREATE], apiGroups: [""], apiVersions: [v1], resources: [configmaps]}]
+---
+# H03 and H05: a privileged container from an image without a tag.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: privileged-agent, namespace: k0sm-e2e}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: privileged-agent}}
+  template:
+    metadata: {labels: {app: privileged-agent}}
+    spec:
+      containers:
+      - name: agent
+        image: busybox
+        command: ["sh", "-c", "sleep 100000"]
+        securityContext: {privileged: true}
+        resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {memory: 32Mi}}
+---
+# H04: one replica that its disruption budget never lets be stopped, so a
+# node drain would wait on it.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: pdb-blocks, namespace: k0sm-e2e}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: pdb-blocks}}
+  template:
+    metadata: {labels: {app: pdb-blocks}}
+    spec:
+      containers:
+      - name: app
+        image: busybox:1.36
+        command: ["sh", "-c", "sleep 100000"]
+        resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {memory: 32Mi}}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: pdb-blocks, namespace: k0sm-e2e}
+spec:
+  minAvailable: 1
+  selector: {matchLabels: {app: pdb-blocks}}
+---
+# X09 tls.cert-expiry: the Ingress serves the certificate in Secret
+# shop-tls, which run.sh makes to expire in 5 days.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: shop-tls, namespace: k0sm-e2e}
+spec:
+  tls:
+  - {hosts: [shop.e2e.test], secretName: shop-tls}
+  rules:
+  - host: shop.e2e.test
+    http:
+      paths:
+      - {path: /, pathType: Prefix, backend: {service: {name: crashloop, port: {number: 80}}}}

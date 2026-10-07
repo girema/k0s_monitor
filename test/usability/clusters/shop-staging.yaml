@@ -1,0 +1,80 @@
+# Usability test, cluster shop-staging: a server stopped responding.
+# worker-2 has disk pressure and evicted two pods. worker-3 stopped
+# reporting; the checkout deployment runs only there, so its outage is a
+# symptom of the node. worker-4 joined a minute ago and never reported.
+apiVersion: v1
+kind: Node
+metadata:
+  name: worker-2
+  labels: {node.k0sproject.io/role: worker}
+status:
+  addresses: [{type: InternalIP, address: 10.0.12.22}]
+  nodeInfo: {kubeletVersion: v1.36.4+k0s, machineID: "", systemUUID: "", bootID: "", kernelVersion: "", osImage: "", containerRuntimeVersion: "", kubeProxyVersion: "", operatingSystem: linux, architecture: amd64}
+  conditions:
+  - {type: Ready, status: "True", reason: KubeletReady, lastTransitionTime: "2026-09-01T00:00:00Z"}
+  - {type: DiskPressure, status: "True", reason: KubeletHasDiskPressure, message: "kubelet has disk pressure", lastTransitionTime: "2026-09-27T13:31:00Z"}
+  - {type: MemoryPressure, status: "False", lastTransitionTime: "2026-09-01T00:00:00Z"}
+---
+apiVersion: v1
+kind: Node
+metadata: {name: worker-3}
+status:
+  addresses: [{type: InternalIP, address: 10.0.12.23}]
+  conditions:
+  - {type: Ready, status: Unknown, reason: NodeStatusUnknown, message: "Kubelet stopped posting node status.", lastTransitionTime: "2026-09-27T13:48:00Z", lastHeartbeatTime: "2026-09-27T13:47:30Z"}
+---
+apiVersion: v1
+kind: Node
+metadata: {name: worker-4, creationTimestamp: "2026-09-27T13:59:00Z"}
+---
+apiVersion: coordination.k8s.io/v1
+kind: Lease
+metadata: {name: worker-3, namespace: kube-node-lease}
+spec: {holderIdentity: worker-3, renewTime: "2026-09-27T13:47:30.000000Z"}
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: evicted-1, namespace: batch}
+spec: {nodeName: worker-2, containers: [{name: c, image: busybox}]}
+status: {phase: Failed, reason: Evicted, message: "The node was low on resource: ephemeral-storage."}
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: evicted-2, namespace: batch}
+spec: {nodeName: worker-2, containers: [{name: c, image: busybox}]}
+status: {phase: Failed, reason: Evicted}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: checkout, namespace: shop, creationTimestamp: "2026-09-01T00:00:00Z"}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: checkout}}
+  template:
+    metadata: {labels: {app: checkout}}
+    spec: {containers: [{name: web, image: nginx}]}
+status:
+  replicas: 2
+  availableReplicas: 0
+  conditions:
+  - {type: Available, status: "False", reason: MinimumReplicasUnavailable, lastTransitionTime: "2026-09-27T13:54:00Z"}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: checkout-6f7-aaaaa
+  namespace: shop
+  labels: {app: checkout, pod-template-hash: 6f7}
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: checkout-6f7, uid: rs3, controller: true}]
+spec: {nodeName: worker-3, containers: [{name: web, image: nginx}]}
+status: {phase: Running, conditions: [{type: Ready, status: "False"}]}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: checkout-6f7-bbbbb
+  namespace: shop
+  labels: {app: checkout, pod-template-hash: 6f7}
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: checkout-6f7, uid: rs3, controller: true}]
+spec: {nodeName: worker-3, containers: [{name: web, image: nginx}]}
+status: {phase: Running, conditions: [{type: Ready, status: "False"}]}

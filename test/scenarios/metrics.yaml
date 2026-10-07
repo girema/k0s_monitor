@@ -1,0 +1,230 @@
+# Metrics for cluster "a" of the end-to-end test: a real Prometheus that
+# k0s-monitor finds by itself (monitoring/prometheus-k8s) and reads through
+# the API server.
+#
+# - It scrapes the kubelets through the API server for real volume usage
+#   (kubelet_volume_stats_*) and container memory (cAdvisor).
+# - k0sm-e2e/fill-data is a local volume on a 64 MiB tmpfs that the filler
+#   fills to about 87% (pvc.usage).
+# - memhog keeps 58 MiB in memory under a 64 MiB limit (container.near-limit).
+# - A fake node-exporter (busybox serving a metrics file) stands in for the
+#   node, whose real disk, clock and CPU steal can't be controlled in CI:
+#   /var/lib/k0s 95% full (node.fs-high), 30% CPU steal (vm.cpu-steal), the
+#   clock 2.5 s off and unsynchronized (vm.clock-skew), and the systemd
+#   collector's k0sworker.service failed (vm.service-down), and eth9's link
+#   going down and up (vm.kernel-errors; a pod's veth doesn't count). It booted 2 h
+#   ago, before the node joined the cluster: a new node, so no vm.reboot.
+# - Two alerting rules fire: one about fill-data, which k0s-monitor links to
+#   its problem, and one about nothing it checks.
+#
+# The node runs in Docker with --tmpfs /mnt/e2e-vol:size=64m.
+apiVersion: v1
+kind: Namespace
+metadata: {name: monitoring}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: prometheus, namespace: monitoring}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: e2e-prometheus}
+rules:
+- apiGroups: [""]
+  resources: [nodes, nodes/proxy, nodes/metrics]
+  verbs: [get, list, watch]
+- nonResourceURLs: [/metrics]
+  verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: e2e-prometheus}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: e2e-prometheus}
+subjects: [{kind: ServiceAccount, name: prometheus, namespace: monitoring}]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: prometheus-config, namespace: monitoring}
+data:
+  # Two alerts (M5): one about the filled volume, which k0s-monitor links to
+  # its problem, and one about nothing k0s-monitor checks.
+  rules.yml: |
+    groups:
+    - name: e2e
+      rules:
+      - alert: E2EVolumeFillingUp
+        expr: kubelet_volume_stats_used_bytes{persistentvolumeclaim="fill-data"} / kubelet_volume_stats_capacity_bytes{persistentvolumeclaim="fill-data"} > 0.5
+        labels: {severity: warning}
+        annotations: {summary: "The volume fill-data is more than half full."}
+      - alert: E2EUnrelated
+        expr: vector(1)
+        labels: {severity: info, namespace: k0sm-e2e, service: e2e-nothing}
+        annotations: {summary: "An alert about nothing k0s-monitor checks."}
+  prometheus.yml: |
+    global: {scrape_interval: 15s, evaluation_interval: 15s}
+    rule_files: [/etc/prometheus/rules.yml]
+    scrape_configs:
+    # The fake node-exporter on each node's address (hostNetwork).
+    - job_name: node-exporter
+      fallback_scrape_protocol: PrometheusText0.0.4
+      kubernetes_sd_configs: [{role: node}]
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_node_address_InternalIP]
+        target_label: __address__
+        replacement: $1:9100
+    # The kubelets through the API server. Its service IP is used because
+    # this cluster's DNS is broken on purpose.
+    - job_name: kubelet
+      scheme: https
+      authorization: {credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token}
+      tls_config: {ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt, server_name: kubernetes.default.svc}
+      kubernetes_sd_configs: [{role: node}]
+      relabel_configs:
+      - target_label: __address__
+        replacement: 10.96.0.1:443
+      - source_labels: [__meta_kubernetes_node_name]
+        target_label: __metrics_path__
+        replacement: /api/v1/nodes/$1/proxy/metrics
+    - job_name: cadvisor
+      scheme: https
+      authorization: {credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token}
+      tls_config: {ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt, server_name: kubernetes.default.svc}
+      kubernetes_sd_configs: [{role: node}]
+      relabel_configs:
+      - target_label: __address__
+        replacement: 10.96.0.1:443
+      - source_labels: [__meta_kubernetes_node_name]
+        target_label: __metrics_path__
+        replacement: /api/v1/nodes/$1/proxy/metrics/cadvisor
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: prometheus, namespace: monitoring, labels: {app.kubernetes.io/name: prometheus}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app.kubernetes.io/name: prometheus}}
+  template:
+    metadata: {labels: {app.kubernetes.io/name: prometheus}}
+    spec:
+      serviceAccountName: prometheus
+      containers:
+      - name: prometheus
+        image: docker.io/prom/prometheus:v3.5.0
+        args: [--config.file=/etc/prometheus/prometheus.yml, --storage.tsdb.path=/prometheus, --storage.tsdb.retention.time=1d]
+        ports: [{name: web, containerPort: 9090}]
+        readinessProbe: {httpGet: {path: /-/ready, port: web}, periodSeconds: 5}
+        resources: {requests: {cpu: 50m, memory: 128Mi}}
+        volumeMounts:
+        - {name: config, mountPath: /etc/prometheus}
+        - {name: data, mountPath: /prometheus}
+      volumes:
+      - {name: config, configMap: {name: prometheus-config}}
+      - {name: data, emptyDir: {}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: prometheus-k8s, namespace: monitoring, labels: {app.kubernetes.io/name: prometheus}}
+spec:
+  selector: {app.kubernetes.io/name: prometheus}
+  ports: [{name: web, port: 9090, targetPort: web}]
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata: {name: fake-node-exporter, namespace: monitoring}
+spec:
+  selector: {matchLabels: {app: fake-node-exporter}}
+  template:
+    metadata: {labels: {app: fake-node-exporter}}
+    spec:
+      hostNetwork: true
+      containers:
+      - name: exporter
+        image: busybox:1.36
+        env: [{name: NODE_NAME, valueFrom: {fieldRef: {fieldPath: spec.nodeName}}}]
+        resources: {requests: {cpu: 5m, memory: 8Mi}}
+        command:
+        - sh
+        - -c
+        - |
+          mkdir -p /tmp/www
+          boot=$(( $(date +%s) - 7200 ))
+          t=0
+          while true; do
+            fs='device="/dev/e2e",fstype="ext4",mountpoint="/var/lib/k0s"'
+            {
+              echo "node_uname_info{nodename=\"$NODE_NAME\",release=\"6.8.0-e2e\",sysname=\"Linux\"} 1"
+              echo "node_filesystem_size_bytes{$fs} 107374182400"
+              echo "node_filesystem_avail_bytes{$fs} 5368709120"
+              echo "node_filesystem_files{$fs} 6553600"
+              echo "node_filesystem_files_free{$fs} 6000000"
+              echo "node_filesystem_readonly{$fs} 0"
+              echo "node_cpu_seconds_total{cpu=\"0\",mode=\"idle\"} $(( t * 6 / 10 ))"
+              echo "node_cpu_seconds_total{cpu=\"0\",mode=\"steal\"} $(( t * 3 / 10 ))"
+              echo "node_timex_offset_seconds 2.5"
+              echo "node_timex_sync_status 0"
+              echo "node_boot_time_seconds $boot"
+              echo "node_systemd_unit_state{name=\"k0sworker.service\",state=\"active\",type=\"notify\"} 0"
+              echo "node_systemd_unit_state{name=\"k0sworker.service\",state=\"failed\",type=\"notify\"} 1"
+              echo "node_network_carrier_changes_total{device=\"eth9\"} $(( t / 5 ))"
+              echo "node_network_carrier_changes_total{device=\"veth1234\"} $(( t ))"
+            } > /tmp/www/metrics.new
+            mv /tmp/www/metrics.new /tmp/www/metrics
+            [ -n "$httpd" ] || { httpd -p 9100 -h /tmp/www; httpd=1; }
+            sleep 5
+            t=$(( t + 5 ))
+          done
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata: {name: e2e-fill}
+spec:
+  capacity: {storage: 64Mi}
+  accessModes: [ReadWriteOnce]
+  storageClassName: e2e-local
+  persistentVolumeReclaimPolicy: Retain
+  local: {path: /mnt/e2e-vol}
+  nodeAffinity:
+    required:
+      nodeSelectorTerms: [{matchExpressions: [{key: kubernetes.io/hostname, operator: In, values: [k0sm-a]}]}]
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: fill-data, namespace: k0sm-e2e}
+spec:
+  storageClassName: e2e-local
+  accessModes: [ReadWriteOnce]
+  resources: {requests: {storage: 64Mi}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: filler, namespace: k0sm-e2e}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: filler}}
+  template:
+    metadata: {labels: {app: filler}}
+    spec:
+      containers:
+      - name: filler
+        image: busybox:1.36
+        command: [sh, -c, "dd if=/dev/zero of=/data/fill bs=1M count=56 && sleep 86400"]
+        resources: {requests: {cpu: 5m, memory: 8Mi}}
+        volumeMounts: [{name: data, mountPath: /data}]
+      volumes: [{name: data, persistentVolumeClaim: {claimName: fill-data}}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: memhog, namespace: k0sm-e2e}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: memhog}}
+  template:
+    metadata: {labels: {app: memhog}}
+    spec:
+      containers:
+      - name: memhog
+        image: busybox:1.36
+        command: [sh, -c, "dd if=/dev/zero of=/shm/fill bs=1M count=58 && sleep 86400"]
+        resources: {requests: {cpu: 5m, memory: 64Mi}, limits: {memory: 64Mi}}
+        volumeMounts: [{name: shm, mountPath: /shm}]
+      volumes: [{name: shm, emptyDir: {medium: Memory, sizeLimit: 64Mi}}]

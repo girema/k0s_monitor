@@ -1,0 +1,100 @@
+# Usability test, cluster office: everything works. The intranet runs 2 of
+# 2 copies, and its Service has both ready.
+apiVersion: v1
+kind: Node
+metadata: {name: office-1, labels: {kubernetes.io/hostname: office-1}}
+status:
+  conditions:
+  - {type: Ready, status: "True", reason: KubeletReady, lastTransitionTime: "2026-09-01T00:00:00Z", lastHeartbeatTime: "2026-09-27T13:59:50Z"}
+  allocatable: {cpu: "4", memory: 8Gi, pods: "110"}
+  capacity: {cpu: "4", memory: 8Gi, pods: "110"}
+  nodeInfo: {kubeletVersion: v1.36.4+k0s, osImage: Ubuntu 24.04 LTS, kernelVersion: 6.8.0-45-generic, containerRuntimeVersion: containerd://1.7.27}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: intranet, namespace: office, annotations: {deployment.kubernetes.io/revision: "7"}}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: intranet}}
+  template:
+    metadata: {labels: {app: intranet}}
+    spec:
+      containers:
+      - name: intranet
+        image: "office/intranet:4.2.1"
+        resources: {requests: {cpu: 100m, memory: 128Mi}, limits: {memory: 256Mi}}
+        readinessProbe: {httpGet: {path: /healthz, port: 8080}}
+        livenessProbe: {httpGet: {path: /healthz, port: 8080}}
+status: {replicas: 2, updatedReplicas: 2, readyReplicas: 2, availableReplicas: 2}
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: intranet-55d8c
+  namespace: office
+  annotations: {deployment.kubernetes.io/revision: "7"}
+  ownerReferences: [{apiVersion: apps/v1, kind: Deployment, name: intranet, uid: d-intranet, controller: true}]
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: intranet, pod-template-hash: 55d8c}}
+  template:
+    metadata: {labels: {app: intranet, pod-template-hash: 55d8c}}
+    spec: {containers: [{name: intranet, image: "office/intranet:4.2.1"}]}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: intranet-55d8c-a1b2c
+  namespace: office
+  labels: {app: intranet, pod-template-hash: 55d8c}
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: intranet-55d8c, uid: rs-intranet, controller: true}]
+spec:
+  nodeName: office-1
+  containers:
+  - name: intranet
+    image: "office/intranet:4.2.1"
+    resources: {requests: {cpu: 100m, memory: 128Mi}, limits: {memory: 256Mi}}
+    readinessProbe: {httpGet: {path: /healthz, port: 8080}}
+    livenessProbe: {httpGet: {path: /healthz, port: 8080}}
+status:
+  phase: Running
+  podIP: 10.244.0.11
+  conditions: [{type: Ready, status: "True"}]
+  containerStatuses: [{name: intranet, image: "office/intranet:4.2.1", imageID: "", ready: true, restartCount: 0, state: {running: {startedAt: "2026-09-22T07:00:00Z"}}}]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: intranet-55d8c-d4e5f
+  namespace: office
+  labels: {app: intranet, pod-template-hash: 55d8c}
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: intranet-55d8c, uid: rs-intranet, controller: true}]
+spec:
+  nodeName: office-1
+  containers:
+  - name: intranet
+    image: "office/intranet:4.2.1"
+    resources: {requests: {cpu: 100m, memory: 128Mi}, limits: {memory: 256Mi}}
+    readinessProbe: {httpGet: {path: /healthz, port: 8080}}
+    livenessProbe: {httpGet: {path: /healthz, port: 8080}}
+status:
+  phase: Running
+  podIP: 10.244.0.12
+  conditions: [{type: Ready, status: "True"}]
+  containerStatuses: [{name: intranet, image: "office/intranet:4.2.1", imageID: "", ready: true, restartCount: 0, state: {running: {startedAt: "2026-09-22T07:00:00Z"}}}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: intranet, namespace: office}
+spec:
+  type: ClusterIP
+  selector: {app: intranet}
+  ports: [{port: 80, targetPort: 8080, protocol: TCP}]
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata: {name: intranet-x1, namespace: office, labels: {kubernetes.io/service-name: intranet}}
+addressType: IPv4
+endpoints:
+- {addresses: ["10.244.0.11"], conditions: {ready: true}}
+- {addresses: ["10.244.0.12"], conditions: {ready: true}}

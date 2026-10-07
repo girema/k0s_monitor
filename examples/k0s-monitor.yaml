@@ -1,0 +1,51 @@
+# k0s-monitor configuration. Scan every cluster listed here with:
+#   k0s-monitor scan --config k0s-monitor.yaml
+# Relative kubeconfig paths are resolved against this file's directory.
+
+clusters:                        # up to 5
+- name: edge-prod
+  kubeconfig: kubeconfigs/edge-prod.conf
+  criticality: high              # high, normal (default) or low: moves priorities up or down
+  k0sVersion: v1.36.4+k0s.1      # optional: the k0s version your product ships; default: what most controllers run
+- name: factory-berlin
+  kubeconfig: kubeconfigs/factory-berlin.conf
+  context: admin@factory-berlin  # optional, default is the current context
+  proxy: socks5://127.0.0.1:1080 # optional: http, https or socks5
+- name: lab
+  kubeconfig: ~/.kube/lab.conf
+  criticality: low
+
+# How long a condition must last before it is reported. The defaults are shown.
+thresholds:
+  pendingAfter: 2m               # pod waiting to be scheduled
+  pvcPendingAfter: 2m            # volume claim not bound
+  deploymentUnavailableAfter: 2m # deployment with missing replicas
+  crashLoopRestarts: 3           # restarts that count as a crash loop ...
+  crashLoopWindow: 10m           # ... when the last one is this recent
+  oomWindow: 1h                  # report memory kills this recent
+  containerCreatingAfter: 5m     # pod stuck while its containers are created
+  terminatingAfter: 5m           # pod stuck while it is deleted
+  notReadyAfter: 5m              # pod running but not ready
+  cordonedAfter: 24h             # node left cordoned
+  lbPendingAfter: 10m            # LoadBalancer Service without an address
+  namespaceTerminatingAfter: 10m # namespace stuck while it is deleted
+  updateStuckAfter: 30m          # a node's part in a k0s update (Autopilot)
+  # From Prometheus metrics. warn is Medium, high is High, critical is
+  # Critical; percentages are 0-100.
+  volumeUsedPercent: {warn: 80, high: 90, critical: 95}
+  volumeFullWithin: {high: 24h, critical: 6h}     # forecast: time until full
+  nodeDiskPercent: {warn: 80, high: 85, critical: 90} # the disk of /var/lib/k0s
+  hostDiskPercent: {warn: 80, high: 90}           # other disks of a node
+  inodesPercent: {warn: 85, high: 95}
+  nodeSaturationPercent: {warn: 85, high: 95}     # CPU or memory, over 15 min
+  cpuStealPercent: {warn: 10, high: 25}           # VM CPU taken by the hypervisor
+  iowaitPercent: {warn: 20, high: 40}
+  diskLatency: {warn: 100ms, high: 500ms}         # per disk operation
+  clockSkew: {warn: 1s, high: 5s}
+  containerMemoryPercent: {warn: 90}              # of the container's limit
+  cpuThrottledPercent: {warn: 25}                 # CPU periods throttled
+  hpaMaxedAfter: 30m                              # autoscaler at its maximum
+
+scan:
+  connectTimeout: 10s            # per cluster, to reach the API server
+  syncTimeout: 60s               # per cluster, to read all objects

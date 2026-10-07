@@ -1,0 +1,16 @@
+# Nodes without a kubelet, applied to e2e cluster "b". k0sm-fake-down never
+# reports (N01 node.not-ready). k0sm-fake-pressure gets its status patched
+# with DiskPressure and node-problem-detector's ReadonlyFilesystem right
+# before each scan (N02 node.pressure, N10 node.npd-condition), and run.sh
+# cordons it (N08 node.cordoned-long, with a 10 s threshold).
+apiVersion: v1
+kind: Node
+metadata:
+  name: k0sm-fake-down
+  labels: {k0sm-e2e: "true"}
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: k0sm-fake-pressure
+  labels: {k0sm-e2e: "true"}
