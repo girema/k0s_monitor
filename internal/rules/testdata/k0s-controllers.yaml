@@ -1,0 +1,58 @@
+# Three controllers behind a load balancer (api.shop.lan), as asked one by
+# one, with their leases:
+# - ctrl-1 is healthy.
+# - ctrl-2 answers, but its API server hasn't finished starting and can't
+#   reach etcd (apiserver.readyz and etcd.health, both High: the others
+#   are fine), its certificate expires in 5 days (cert.expiry, Critical)
+#   and doesn't include api.shop.lan (endpoint.tls-name).
+# - ctrl-3 stopped renewing its lease 5 minutes ago and doesn't answer
+#   (controllers.count: 2 of 3 run).
+# - ctrl-old was removed a month ago; its released lease is left over
+#   (controllers.count, Low).
+# The etcd database is 1.8 GiB of its default 2 GiB quota (etcd.health,
+# Critical), and the kubeconfig's client certificate expires in 20 days
+# (cert.expiry, Medium). The load balancer stopped answering 3 minutes ago,
+# so k0s-monitor reads the cluster through ctrl-1 (endpoint.fallback,
+# High).
+apiVersion: coordination.k8s.io/v1
+kind: Lease
+metadata: {name: k0s-ctrl-ctrl-1, namespace: kube-node-lease}
+spec: {holderIdentity: "1111", leaseDurationSeconds: 60, renewTime: "2026-09-27T13:59:50.000000Z"}
+---
+apiVersion: coordination.k8s.io/v1
+kind: Lease
+metadata: {name: k0s-ctrl-ctrl-2, namespace: kube-node-lease}
+spec: {holderIdentity: "2222", leaseDurationSeconds: 60, renewTime: "2026-09-27T13:59:40.000000Z"}
+---
+apiVersion: coordination.k8s.io/v1
+kind: Lease
+metadata: {name: k0s-ctrl-ctrl-3, namespace: kube-node-lease}
+spec: {holderIdentity: "3333", leaseDurationSeconds: 60, renewTime: "2026-09-27T13:55:00.000000Z"}
+---
+apiVersion: coordination.k8s.io/v1
+kind: Lease
+metadata: {name: k0s-ctrl-ctrl-old, namespace: kube-node-lease}
+spec: {holderIdentity: "", leaseDurationSeconds: 1, renewTime: "2026-08-27T09:00:00.000000Z"}
+---
+# A node lease, which is not a controller's.
+apiVersion: coordination.k8s.io/v1
+kind: Lease
+metadata: {name: worker-1, namespace: kube-node-lease}
+spec: {holderIdentity: worker-1, leaseDurationSeconds: 40, renewTime: "2026-09-27T13:59:55.000000Z"}
+---
+apiVersion: k0s-monitor.io/v1
+kind: ControlPlane
+server: api.shop.lan
+etcdDB: 1.8Gi
+objects: {events: 180000, replicasets.apps: 4200, secrets: 900}
+clientCertExpiresIn: 20d
+fallback: {server: "api.shop.lan:6443", error: "No answer from api.shop.lan on port 6443.", controller: ctrl-1,
+  address: "10.0.0.11:6443", since: 3m}
+controllers:
+- {name: ctrl-1, address: "10.0.0.11:6443", from: [controlnode, endpoints], version: v1.36.4+k0s, k0sVersion: v1.36.4+k0s.1,
+   certNames: [kubernetes, kubernetes.default.svc, api.shop.lan, 10.0.0.11]}
+- {name: ctrl-2, address: "10.0.0.12:6443", from: [controlnode, endpoints], version: v1.36.4+k0s, k0sVersion: v1.36.4+k0s.1,
+   failing: [poststarthook/start-apiextensions-controllers, etcd], certExpiresIn: 5d,
+   certNames: [kubernetes, kubernetes.default.svc, 10.0.0.12], notCoveringServer: true}
+- {name: ctrl-3, address: "10.0.0.13:6443", from: [controlnode], unreached: true,
+   error: "k0s-monitor can't reach 10.0.0.13:6443 from this host: connection refused"}

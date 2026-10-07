@@ -1,0 +1,147 @@
+# volume.mount-failure: db-1's volume is still attached to another node
+# (Multi-Attach). Its pod is stuck in ContainerCreating, and the StatefulSet
+# has 1 of 3 replicas ready (db-2 is not created until db-1 is ready): both
+# fold under the volume problem.
+# ds.unavailable: logging/fluent-bit is not ready on worker-2 because its
+# readiness probe fails; it folds under pod.not-ready.
+apiVersion: v1
+kind: Node
+metadata: {name: worker-1}
+status:
+  conditions: [{type: Ready, status: "True", lastTransitionTime: "2026-09-01T00:00:00Z"}]
+---
+apiVersion: v1
+kind: Node
+metadata: {name: worker-2}
+status:
+  conditions: [{type: Ready, status: "True", lastTransitionTime: "2026-09-01T00:00:00Z"}]
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: openebs-hostpath
+  annotations: {storageclass.kubernetes.io/is-default-class: "true"}
+provisioner: openebs.io/local
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: {name: db, namespace: shop, creationTimestamp: "2026-09-01T00:00:00Z"}
+spec:
+  replicas: 3
+  serviceName: db
+  selector: {matchLabels: {app: db}}
+  template:
+    metadata: {labels: {app: db}}
+    spec: {containers: [{name: db, image: "postgres:17"}]}
+status: {replicas: 2, readyReplicas: 1, currentReplicas: 2, updatedReplicas: 2}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: data-db-1, namespace: shop, creationTimestamp: "2026-09-01T00:00:00Z"}
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: openebs-hostpath
+  volumeName: pvc-5b1d
+  resources: {requests: {storage: 20Gi}}
+status: {phase: Bound}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: db-0
+  namespace: shop
+  labels: {app: db}
+  ownerReferences: [{apiVersion: apps/v1, kind: StatefulSet, name: db, uid: s1, controller: true}]
+spec:
+  nodeName: worker-1
+  containers: [{name: db, image: "postgres:17"}]
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "True", lastTransitionTime: "2026-09-20T00:00:00Z"}]
+  containerStatuses:
+  - {name: db, ready: true, state: {running: {startedAt: "2026-09-20T00:00:00Z"}}}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: db-1
+  namespace: shop
+  labels: {app: db}
+  creationTimestamp: "2026-09-27T13:40:00Z"
+  ownerReferences: [{apiVersion: apps/v1, kind: StatefulSet, name: db, uid: s1, controller: true}]
+spec:
+  nodeName: worker-2
+  containers: [{name: db, image: "postgres:17"}]
+  volumes: [{name: data, persistentVolumeClaim: {claimName: data-db-1}}]
+status:
+  phase: Pending
+  conditions:
+  - {type: PodScheduled, status: "True", lastTransitionTime: "2026-09-27T13:40:00Z"}
+  - {type: Ready, status: "False", lastTransitionTime: "2026-09-27T13:40:00Z"}
+  containerStatuses:
+  - {name: db, ready: false, state: {waiting: {reason: ContainerCreating}}}
+---
+apiVersion: v1
+kind: Event
+metadata: {name: db-1.attach, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: db-1}
+type: Warning
+reason: FailedAttachVolume
+message: 'Multi-Attach error for volume "pvc-5b1d" Volume is already exclusively attached to one node and can''t be attached to another'
+count: 20
+lastTimestamp: "2026-09-27T13:59:00Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: db-1.mount, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: db-1}
+type: Warning
+reason: FailedMount
+message: "Unable to attach or mount volumes: unmounted volumes=[data], unattached volumes=[data]: timed out waiting for the condition"
+count: 8
+lastTimestamp: "2026-09-27T13:59:30Z"
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata: {name: fluent-bit, namespace: logging, creationTimestamp: "2026-09-01T00:00:00Z"}
+spec:
+  selector: {matchLabels: {app: fluent-bit}}
+  template:
+    metadata: {labels: {app: fluent-bit}}
+    spec: {containers: [{name: fluent-bit, image: "fluent/fluent-bit:4"}]}
+status: {desiredNumberScheduled: 2, currentNumberScheduled: 2, numberReady: 1, numberUnavailable: 1}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: fluent-bit-a
+  namespace: logging
+  labels: {app: fluent-bit}
+  ownerReferences: [{apiVersion: apps/v1, kind: DaemonSet, name: fluent-bit, uid: ds1, controller: true}]
+spec:
+  nodeName: worker-1
+  containers: [{name: fluent-bit, image: "fluent/fluent-bit:4"}]
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "True", lastTransitionTime: "2026-09-20T00:00:00Z"}]
+  containerStatuses:
+  - {name: fluent-bit, ready: true, state: {running: {startedAt: "2026-09-20T00:00:00Z"}}}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: fluent-bit-b
+  namespace: logging
+  labels: {app: fluent-bit}
+  ownerReferences: [{apiVersion: apps/v1, kind: DaemonSet, name: fluent-bit, uid: ds1, controller: true}]
+spec:
+  nodeName: worker-2
+  containers:
+  - name: fluent-bit
+    image: "fluent/fluent-bit:4"
+    readinessProbe: {httpGet: {path: /api/v1/health, port: 2020}}
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "False", lastTransitionTime: "2026-09-27T13:30:00Z"}]
+  containerStatuses:
+  - {name: fluent-bit, ready: false, state: {running: {startedAt: "2026-09-27T13:10:00Z"}}}

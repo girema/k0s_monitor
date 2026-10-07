@@ -1,0 +1,149 @@
+# Certificates of apps (X09), in TLS Secrets. The clock is 2026-09-27 14:00.
+# - web-tls (shop.example.com) expires in 5 days; Ingress web also serves
+#   www.example.com, which the certificate doesn't cover.
+# - api-tls expired 2 days ago; the api pods mount it.
+# - le-tls, renewed by cert-manager, expires in 20 days: renewal isn't late.
+# - late-tls, renewed by cert-manager, expires in 10 days: renewal failed.
+# - old-tls expires in 3 days but nothing uses it.
+# - wild-tls (*.example.com) is valid for months.
+# - a generic Secret is not read at all.
+apiVersion: v1
+kind: Node
+metadata: {name: worker-1}
+status:
+  conditions:
+  - {type: Ready, status: "True", reason: KubeletReady, lastTransitionTime: "2026-09-01T00:00:00Z", lastHeartbeatTime: "2026-09-27T13:59:50Z"}
+  allocatable: {cpu: "4", memory: 8Gi, pods: "110"}
+---
+apiVersion: v1
+kind: Secret
+metadata: {name: web-tls, namespace: shop}
+type: kubernetes.io/tls
+data:
+  tls.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJTVENCOGFBREFnRUNBZ2dZMmJNckJMVXJ0akFLQmdncWhrak9QUVFEQWpBYk1Sa3dGd1lEVlFRREV4QnoKYUc5d0xtVjRZVzF3YkdVdVkyOXRNQjRYRFRJMk1EY3dOREUwTURBd01Gb1hEVEkyTVRBd01qRTBNREF3TUZvdwpHekVaTUJjR0ExVUVBeE1RYzJodmNDNWxlR0Z0Y0d4bExtTnZiVEJaTUJNR0J5cUdTTTQ5QWdFR0NDcUdTTTQ5CkF3RUhBMElBQkl3eUN6ckNEK2pOUE9RY0hkME0zV1VXTklSV1Zlc0pORkVCZUQ4bGhLQW1FaWw5ZHF6WWlJZlkKL2Nrbjk1cHVBOTQwcXVmVTl6anNxeWFoVDU2R3hmYWpIekFkTUJzR0ExVWRFUVFVTUJLQ0VITm9iM0F1WlhoaApiWEJzWlM1amIyMHdDZ1lJS29aSXpqMEVBd0lEUndBd1JBSWdGN2VtbStNdHE3VGwrMk4zUzQvTENXaFJQaytpClVRcS90MHp4aDFEUVE0Z0NJRTQ2NWtSeDFKR2hpTHJja1AwOGtlcENZWFBsa2lCZTlKVlJSeVFFUkxlVAotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+  tls.key: c2VjcmV0LWtleS1uZXZlci1rZXB0
+---
+apiVersion: v1
+kind: Secret
+metadata: {name: api-tls, namespace: shop}
+type: kubernetes.io/tls
+data:
+  tls.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJUVENCOUtBREFnRUNBZ2dZMmJNckMzRjQ1ekFLQmdncWhrak9QUVFEQWpBY01Sb3dHQVlEVlFRREV4RmgKY0drdWMyaHZjQzVwYm5SbGNtNWhiREFlRncweU5qQTJNamN4TkRBd01EQmFGdzB5TmpBNU1qVXhOREF3TURCYQpNQnd4R2pBWUJnTlZCQU1URVdGd2FTNXphRzl3TG1sdWRHVnlibUZzTUZrd0V3WUhLb1pJemowQ0FRWUlLb1pJCnpqMERBUWNEUWdBRVV5TGEyNUFUWmhxR25PRW9TaCtra2o2NjEzWlh4OVY2L2FIUmVXWkRmWFRoM2lqRFU1VncKdlQ1Qk45WTV4Y1cwNWlVRjRqbnljU1p4c05KdFIycmpScU1nTUI0d0hBWURWUjBSQkJVd0U0SVJZWEJwTG5ObwpiM0F1YVc1MFpYSnVZV3d3Q2dZSUtvWkl6ajBFQXdJRFNBQXdSUUloQUkrV3FBUHJyQ01WL0c5TEM1VFgxdzlzCmgyN1NBV0VoUDd6eFlYeStCeEMvQWlBc2M4dGNYZzNxSVVISHhIc0RhemkweDk5WGN0T2hjMlc5QVhQL1gvVUgKQUE9PQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+  tls.key: c2VjcmV0LWtleS1uZXZlci1rZXB0
+---
+apiVersion: v1
+kind: Secret
+metadata: {name: le-tls, namespace: shop, annotations: {cert-manager.io/certificate-name: le}}
+type: kubernetes.io/tls
+data:
+  tls.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJSVENCNjZBREFnRUNBZ2dZMmJNckVNQmYzakFLQmdncWhrak9QUVFEQWpBWk1SY3dGUVlEVlFRREV3NXMKWlM1bGVHRnRjR3hsTG1OdmJUQWVGdzB5TmpBM01Ua3hOREF3TURCYUZ3MHlOakV3TVRjeE5EQXdNREJhTUJreApGekFWQmdOVkJBTVREbXhsTG1WNFlXMXdiR1V1WTI5dE1Ga3dFd1lIS29aSXpqMENBUVlJS29aSXpqMERBUWNEClFnQUVxczRlblRwbUJrb0YvbkdsNHpCSDAzcldvZHh4bHlQRHdiRXlOR2pNWGkyQ1Q5ZnQ0Y0pLTTY1a1FpWk0KY2VrZTNjTll2dnJyRFg1OTdGa2kwZ0FROWFNZE1Cc3dHUVlEVlIwUkJCSXdFSUlPYkdVdVpYaGhiWEJzWlM1agpiMjB3Q2dZSUtvWkl6ajBFQXdJRFNRQXdSZ0loQUxuSkVNUGt5elBDU0lNWGJuRldOQjJlU0xHb1JZMjJzSmdECjNPVkNUYUVLQWlFQWdYMHlub2VIQ3lUSDNTaVJxWFkvOFAxcVQ0ZWJIclRUd21UNlJEdUFOSkk9Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
+  tls.key: c2VjcmV0LWtleS1uZXZlci1rZXB0
+---
+apiVersion: v1
+kind: Secret
+metadata: {name: late-tls, namespace: shop, annotations: {cert-manager.io/certificate-name: late, kubectl.kubernetes.io/last-applied-configuration: "{\"data\":{\"tls.key\":\"c2VjcmV0LWtleS1uZXZlci1rZXB0\"}}"}}
+type: kubernetes.io/tls
+data:
+  tls.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJTekNCOGFBREFnRUNBZ2dZMmJNckZjNUJZVEFLQmdncWhrak9QUVFEQWpBYk1Sa3dGd1lEVlFRREV4QnMKWVhSbExtVjRZVzF3YkdVdVkyOXRNQjRYRFRJMk1EY3dPVEUwTURBd01Gb1hEVEkyTVRBd056RTBNREF3TUZvdwpHekVaTUJjR0ExVUVBeE1RYkdGMFpTNWxlR0Z0Y0d4bExtTnZiVEJaTUJNR0J5cUdTTTQ5QWdFR0NDcUdTTTQ5CkF3RUhBMElBQlBZSXM2V2c2WEZiRURzcmtIcmh2OHNQb3lRUC9ORVNxMS9IRFJSdTdKcGNFekR5emxpYUVxL1QKaUMraFdBeHI4VHZCeW1GL0ZNVVkwRm10bGZtNDlLaWpIekFkTUJzR0ExVWRFUVFVTUJLQ0VHeGhkR1V1WlhoaApiWEJzWlM1amIyMHdDZ1lJS29aSXpqMEVBd0lEU1FBd1JnSWhBSU5GZG1sYjFGd3o5TW90dFB4cTZyRXJwcU9xCktwVHpWOFJ0OXJxZ1ZOTnpBaUVBaHBxNnY2U2drYUUyRm1TUUZmM01zeCtJV01xUEZnbjJPY1VoUnk4QVVVYz0KLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo=
+  tls.key: c2VjcmV0LWtleS1uZXZlci1rZXB0
+---
+apiVersion: v1
+kind: Secret
+metadata: {name: old-tls, namespace: shop}
+type: kubernetes.io/tls
+data:
+  tls.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJSakNCN3FBREFnRUNBZ2dZMmJNckd0Y0lXakFLQmdncWhrak9QUVFEQWpBYU1SZ3dGZ1lEVlFRREV3OXYKYkdRdVpYaGhiWEJzWlM1amIyMHdIaGNOTWpZd056QXlNVFF3TURBd1doY05Nall3T1RNd01UUXdNREF3V2pBYQpNUmd3RmdZRFZRUURFdzl2YkdRdVpYaGhiWEJzWlM1amIyMHdXVEFUQmdjcWhrak9QUUlCQmdncWhrak9QUU1CCkJ3TkNBQVRDSm1PVndJdStPMUhFZ2s0UXJmbkRyaFJNWDljeWRtNjRMQTRGRHhLSzJTOGhZMXhSWGtJZ05UR1YKb1JWdlhueSttSzYzS3ZNMTV4ZkxkbkF2MEFHYW94NHdIREFhQmdOVkhSRUVFekFSZ2c5dmJHUXVaWGhoYlhCcwpaUzVqYjIwd0NnWUlLb1pJemowRUF3SURSd0F3UkFJZ0htMHlMRWx5ZUdteHd1RmxQSmhyVEljK0JzZ01FcHAwCjhDUW1nQ0ZGTlFvQ0lEK1NUSG5UNnVGbnVQWUJUZ2FvR1VyZkczSmcydDlzVDVnRUFmRXJFNkVnCi0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
+  tls.key: c2VjcmV0LWtleS1uZXZlci1rZXB0
+---
+apiVersion: v1
+kind: Secret
+metadata: {name: wild-tls, namespace: shop}
+type: kubernetes.io/tls
+data:
+  tls.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJUekNCOWFBREFnRUNBZ2dZMmJNckgvYjl5REFLQmdncWhrak9QUVFEQWpBWU1SWXdGQVlEVlFRRERBMHEKTG1WNFlXMXdiR1V1WTI5dE1CNFhEVEkzTURFeE5URTBNREF3TUZvWERUSTNNRFF4TlRFME1EQXdNRm93R0RFVwpNQlFHQTFVRUF3d05LaTVsZUdGdGNHeGxMbU52YlRCWk1CTUdCeXFHU000OUFnRUdDQ3FHU000OUF3RUhBMElBCkJEMW5iem14UjFJYXNUMkMxalJZSFFPdnpXdWFNMi9IQU1kdUlScW9hS2IwUjJrb0xlZzFReTNiVkE0cTdldmEKVjBHZUhYK054bndaOUJsNFdaWllVYW1qS1RBbk1DVUdBMVVkRVFRZU1CeUNEU291WlhoaGJYQnNaUzVqYjIyQwpDMlY0WVcxd2JHVXVZMjl0TUFvR0NDcUdTTTQ5QkFNQ0Ewa0FNRVlDSVFEQ3YyK3M4TFJ5aEhKTWsveWZQSW5aCkhOc2MyNW1sNE1tUEFEVi9sR1duQ3dJaEFQdHkxNnB3S0x3MFo3c0dBZjFoMkJrRmloTEJ6Mm8zYnovZjhQemMKUUE2MQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+  tls.key: c2VjcmV0LWtleS1uZXZlci1rZXB0
+---
+apiVersion: v1
+kind: Secret
+metadata: {name: db-password, namespace: shop}
+type: Opaque
+data: {password: aHVudGVyMjI=}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: web, namespace: shop}
+spec:
+  tls:
+  - {hosts: [shop.example.com, www.example.com], secretName: web-tls}
+  - {hosts: [le.example.com], secretName: le-tls}
+  - {hosts: [late.example.com], secretName: late-tls}
+  - {hosts: [app.example.com], secretName: wild-tls}
+  - {hosts: [default.example.com]}
+  rules:
+  - host: shop.example.com
+    http:
+      paths:
+      - {path: /, pathType: Prefix, backend: {service: {name: web, port: {number: 80}}}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: web, namespace: shop}
+spec:
+  selector: {app: web}
+  ports: [{port: 80}]
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: web-a1b2c
+  namespace: shop
+  labels: {kubernetes.io/service-name: web}
+addressType: IPv4
+endpoints:
+- addresses: ["10.244.1.11"]
+  conditions: {ready: true}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: api, namespace: shop, annotations: {deployment.kubernetes.io/revision: "1"}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: api}}
+  template:
+    metadata: {labels: {app: api}}
+    spec: {containers: [{name: api, image: "registry.local/shop/api:1.0"}]}
+status: {replicas: 1, readyReplicas: 1, availableReplicas: 1}
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: api-6d5c4b3a2
+  namespace: shop
+  annotations: {deployment.kubernetes.io/revision: "1"}
+  ownerReferences: [{apiVersion: apps/v1, kind: Deployment, name: api, uid: d-api, controller: true}]
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: api, pod-template-hash: 6d5c4b3a2}}
+  template:
+    metadata: {labels: {app: api, pod-template-hash: 6d5c4b3a2}}
+    spec: {containers: [{name: api, image: "registry.local/shop/api:1.0"}]}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: api-6d5c4b3a2-z9y8x
+  namespace: shop
+  labels: {app: api, pod-template-hash: 6d5c4b3a2}
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: api-6d5c4b3a2, uid: rs-api, controller: true}]
+spec:
+  nodeName: worker-1
+  volumes: [{name: tls, secret: {secretName: api-tls}}, {name: db, secret: {secretName: db-password}}]
+  containers:
+  - name: api
+    image: "registry.local/shop/api:1.0"
+    volumeMounts: [{name: tls, mountPath: /etc/tls, readOnly: true}]
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "True"}]
+  containerStatuses:
+  - {name: api, image: "registry.local/shop/api:1.0", imageID: "", ready: true, restartCount: 0, state: {running: {startedAt: "2026-09-20T00:00:00Z"}}}

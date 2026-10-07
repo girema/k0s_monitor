@@ -1,0 +1,58 @@
+# pod.stuck-creating: shop/report-gen has waited 20 min in ContainerCreating
+# with no warning event (cause unknown).
+# pod.stuck-terminating: shop/old-web waits for a finalizer on a healthy node;
+# shop/api's pod was on worker-3, which is down, so it folds under the node.
+apiVersion: v1
+kind: Node
+metadata: {name: worker-1}
+status:
+  conditions: [{type: Ready, status: "True", lastTransitionTime: "2026-09-01T00:00:00Z"}]
+---
+apiVersion: v1
+kind: Node
+metadata: {name: worker-3, creationTimestamp: "2026-09-01T00:00:00Z"}
+status:
+  conditions: [{type: Ready, status: Unknown, reason: NodeStatusUnknown, message: "Kubelet stopped posting node status.", lastTransitionTime: "2026-09-27T13:30:00Z"}]
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: report-gen, namespace: shop, creationTimestamp: "2026-09-27T13:40:00Z"}
+spec:
+  nodeName: worker-1
+  containers: [{name: gen, image: "registry.local/report:1"}]
+status:
+  phase: Pending
+  conditions: [{type: PodScheduled, status: "True", lastTransitionTime: "2026-09-27T13:40:00Z"}]
+  containerStatuses:
+  - {name: gen, ready: false, state: {waiting: {reason: ContainerCreating}}}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: old-web
+  namespace: shop
+  deletionTimestamp: "2026-09-27T13:20:00Z"
+  finalizers: [example.com/cleanup]
+spec:
+  nodeName: worker-1
+  containers: [{name: web, image: "registry.local/web:1"}]
+status:
+  phase: Running
+  containerStatuses:
+  - {name: web, ready: true, state: {running: {startedAt: "2026-09-20T00:00:00Z"}}}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: api-7d9f6c5b4-z9
+  namespace: shop
+  labels: {app: api, pod-template-hash: 7d9f6c5b4}
+  deletionTimestamp: "2026-09-27T13:40:00Z"
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: api-7d9f6c5b4, uid: rs1, controller: true}]
+spec:
+  nodeName: worker-3
+  containers: [{name: api, image: "registry.local/api:7"}]
+status:
+  phase: Running
+  containerStatuses:
+  - {name: api, ready: true, state: {running: {startedAt: "2026-09-20T00:00:00Z"}}}

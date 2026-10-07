@@ -1,0 +1,183 @@
+# Pods that wait for sick nodes. worker-1 is low on disk and is the only
+# node with disk=ssd, which web needs. worker-2 stopped reporting and
+# worker-4 never did; the agent DaemonSet's pods for them cannot be placed.
+# worker-3 is healthy but too small for big, which therefore waits for CPU,
+# not for a node to recover. cp-1 is reserved for the control plane and
+# changes nothing.
+apiVersion: v1
+kind: Node
+metadata:
+  name: worker-1
+  labels: {disk: ssd}
+spec:
+  taints: [{key: node.kubernetes.io/disk-pressure, effect: NoSchedule}]
+status:
+  allocatable: {cpu: "4", memory: 8Gi, pods: "110"}
+  conditions:
+  - {type: Ready, status: "True", reason: KubeletReady, lastTransitionTime: "2026-09-01T00:00:00Z"}
+  - {type: DiskPressure, status: "True", reason: KubeletHasDiskPressure, message: "kubelet has disk pressure", lastTransitionTime: "2026-09-27T13:30:00Z"}
+---
+apiVersion: v1
+kind: Node
+metadata: {name: worker-2}
+spec:
+  taints:
+  - {key: node.kubernetes.io/unreachable, effect: NoSchedule}
+  - {key: node.kubernetes.io/unreachable, effect: NoExecute}
+status:
+  allocatable: {cpu: "4", memory: 8Gi, pods: "110"}
+  conditions:
+  - {type: Ready, status: Unknown, reason: NodeStatusUnknown, message: "Kubelet stopped posting node status.", lastTransitionTime: "2026-09-27T13:40:00Z", lastHeartbeatTime: "2026-09-27T13:39:30Z"}
+---
+apiVersion: v1
+kind: Node
+metadata: {name: worker-3}
+status:
+  allocatable: {cpu: "4", memory: 8Gi, pods: "110"}
+  conditions: [{type: Ready, status: "True", lastTransitionTime: "2026-09-01T00:00:00Z"}]
+---
+apiVersion: v1
+kind: Node
+metadata: {name: worker-4, creationTimestamp: "2026-09-27T13:50:00Z"}
+---
+apiVersion: v1
+kind: Node
+metadata: {name: cp-1}
+spec:
+  taints: [{key: node-role.kubernetes.io/control-plane, effect: NoSchedule}]
+status:
+  allocatable: {cpu: "4", memory: 8Gi, pods: "110"}
+  conditions: [{type: Ready, status: "True", lastTransitionTime: "2026-09-01T00:00:00Z"}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: web, namespace: shop, creationTimestamp: "2026-09-01T00:00:00Z"}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: web}}
+  template:
+    metadata: {labels: {app: web}}
+    spec: {nodeSelector: {disk: ssd}, containers: [{name: web, image: nginx}]}
+status:
+  replicas: 1
+  availableReplicas: 0
+  conditions:
+  - {type: Available, status: "False", reason: MinimumReplicasUnavailable, lastTransitionTime: "2026-09-27T13:40:00Z"}
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: web-5d8f7
+  namespace: shop
+  ownerReferences: [{apiVersion: apps/v1, kind: Deployment, name: web, uid: d1, controller: true}]
+spec:
+  selector: {matchLabels: {app: web, pod-template-hash: 5d8f7}}
+  template:
+    metadata: {labels: {app: web, pod-template-hash: 5d8f7}}
+    spec: {containers: [{name: web, image: nginx}]}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-5d8f7-abcde
+  namespace: shop
+  labels: {app: web, pod-template-hash: 5d8f7}
+  creationTimestamp: "2026-09-27T13:40:00Z"
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: web-5d8f7, uid: rs1, controller: true}]
+spec:
+  nodeSelector: {disk: ssd}
+  containers: [{name: web, image: nginx}]
+  tolerations:
+  - {key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 300}
+  - {key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute, tolerationSeconds: 300}
+status:
+  phase: Pending
+  conditions:
+  - type: PodScheduled
+    status: "False"
+    reason: Unschedulable
+    lastTransitionTime: "2026-09-27T13:40:00Z"
+    message: "0/4 nodes are available: 1 node(s) had untolerated taint {node.kubernetes.io/disk-pressure: }, 3 node(s) didn't match Pod's node affinity/selector. preemption: 0/4 nodes are available: 4 Preemption is not helpful for scheduling."
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata: {name: agent, namespace: kube-system}
+spec:
+  selector: {matchLabels: {app: agent}}
+  template:
+    metadata: {labels: {app: agent}}
+    spec: {containers: [{name: agent, image: agent}]}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: agent-x7k2p
+  namespace: kube-system
+  labels: {app: agent}
+  creationTimestamp: "2026-09-27T13:41:00Z"
+  ownerReferences: [{apiVersion: apps/v1, kind: DaemonSet, name: agent, uid: ds1, controller: true}]
+spec:
+  containers: [{name: agent, image: agent}]
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchFields: [{key: metadata.name, operator: In, values: [worker-2]}]
+  tolerations:
+  - {key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute}
+  - {key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute}
+  - {key: node.kubernetes.io/disk-pressure, operator: Exists, effect: NoSchedule}
+  - {key: node.kubernetes.io/memory-pressure, operator: Exists, effect: NoSchedule}
+  - {key: node.kubernetes.io/pid-pressure, operator: Exists, effect: NoSchedule}
+  - {key: node.kubernetes.io/unschedulable, operator: Exists, effect: NoSchedule}
+status:
+  phase: Pending
+  conditions:
+  - type: PodScheduled
+    status: "False"
+    reason: Unschedulable
+    lastTransitionTime: "2026-09-27T13:41:00Z"
+    message: "0/4 nodes are available: 1 node(s) had untolerated taint {node.kubernetes.io/unreachable: }, 3 node(s) didn't match Pod's node affinity/selector. preemption: 0/4 nodes are available: 4 Preemption is not helpful for scheduling."
+---
+# No taint yet and no capacity: the scheduler names the capacity, but the
+# pod waits for the node.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: agent-q9w4z
+  namespace: kube-system
+  labels: {app: agent}
+  creationTimestamp: "2026-09-27T13:50:00Z"
+  ownerReferences: [{apiVersion: apps/v1, kind: DaemonSet, name: agent, uid: ds1, controller: true}]
+spec:
+  containers: [{name: agent, image: agent}]
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchFields: [{key: metadata.name, operator: In, values: [worker-4]}]
+  tolerations:
+  - {key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute}
+  - {key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute}
+status:
+  phase: Pending
+  conditions:
+  - type: PodScheduled
+    status: "False"
+    reason: Unschedulable
+    lastTransitionTime: "2026-09-27T13:50:00Z"
+    message: "0/5 nodes are available: 1 Too many pods, 4 node(s) didn't match Pod's node affinity/selector. no new claims to deallocate, preemption: 0/5 nodes are available: 5 Preemption is not helpful for scheduling."
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: big, namespace: ml, creationTimestamp: "2026-09-27T13:42:00Z"}
+spec:
+  containers: [{name: c, image: busybox, resources: {requests: {cpu: "64"}}}]
+status:
+  phase: Pending
+  conditions:
+  - type: PodScheduled
+    status: "False"
+    reason: Unschedulable
+    lastTransitionTime: "2026-09-27T13:42:00Z"
+    message: "0/5 nodes are available: 1 Insufficient cpu, 1 node(s) had untolerated taint {node-role.kubernetes.io/control-plane: }, 1 node(s) had untolerated taint {node.kubernetes.io/disk-pressure: }, 1 node(s) had untolerated taint {node.kubernetes.io/unreachable: }. preemption: 0/4 nodes are available: 4 Preemption is not helpful for scheduling."

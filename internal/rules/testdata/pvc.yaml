@@ -1,0 +1,56 @@
+# No default StorageClass (a common k0s pitfall). data-db names no class, so
+# it stays Pending and the db pod cannot be scheduled: the pod is a symptom.
+# data-wait uses a WaitForFirstConsumer class and has no consumer: normal.
+# data-missing names a class that does not exist and has no consumer.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata: {name: openebs-hostpath}
+provisioner: openebs.io/local
+volumeBindingMode: WaitForFirstConsumer
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: data-db, namespace: shop, creationTimestamp: "2026-09-27T13:50:00Z"}
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: {requests: {storage: 10Gi}}
+status: {phase: Pending}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: data-wait, namespace: shop, creationTimestamp: "2026-09-27T12:00:00Z"}
+spec:
+  storageClassName: openebs-hostpath
+  accessModes: [ReadWriteOnce]
+  resources: {requests: {storage: 1Gi}}
+status: {phase: Pending}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: data-missing, namespace: shop, creationTimestamp: "2026-09-27T13:00:00Z"}
+spec:
+  storageClassName: fast
+  accessModes: [ReadWriteOnce]
+  resources: {requests: {storage: 5Gi}}
+status: {phase: Pending}
+---
+apiVersion: v1
+kind: Node
+metadata: {name: worker-1}
+status:
+  conditions: [{type: Ready, status: "True", lastTransitionTime: "2026-09-01T00:00:00Z"}]
+  allocatable: {cpu: "4", memory: 8Gi}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: db-0
+  namespace: shop
+  ownerReferences: [{apiVersion: apps/v1, kind: StatefulSet, name: db, uid: sts2, controller: true}]
+spec:
+  containers: [{name: db, image: postgres}]
+  volumes: [{name: data, persistentVolumeClaim: {claimName: data-db}}]
+status:
+  phase: Pending
+  conditions:
+  - {type: PodScheduled, status: "False", reason: Unschedulable, lastTransitionTime: "2026-09-27T13:50:00Z", message: "0/1 nodes are available: pod has unbound immediate PersistentVolumeClaims. preemption: 0/1 nodes are available: 1 Preemption is not helpful for scheduling."}

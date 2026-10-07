@@ -1,0 +1,62 @@
+# The product ships k0s v1.36.4+k0s.1 (from its k0sctl.yaml). Its last
+# update, through Autopilot, failed on worker-2, which couldn't download it
+# and still runs v1.35.9 (k0s.update-stuck, High); ctrl-3 was reinstalled by hand with v1.36.3
+# (k0s.version-drift, Medium, both nodes). ctrl-1 also runs workloads: it is
+# counted once, as a controller. worker-3 hasn't reported a version yet.
+apiVersion: v1
+kind: Node
+metadata: {name: ctrl-1, labels: {node.k0sproject.io/role: control-plane}}
+status: {nodeInfo: {kubeletVersion: v1.36.4+k0s}}
+---
+apiVersion: v1
+kind: Node
+metadata: {name: worker-1}
+status: {nodeInfo: {kubeletVersion: v1.36.4+k0s}}
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: worker-2
+  annotations:
+    k0sproject.io/autopilot-signal-version: v2
+    k0sproject.io/autopilot-signal-data: '{"planId":"product-2026.09","created":"2026-09-27T11:40:00Z","command":{"id":0,"k0supdate":{"url":"https://updates.example.invalid/k0s-v1.36.4+k0s.1-amd64","version":"v1.36.4+k0s.1"}},"status":{"status":"FailedDownload","timestamp":"2026-09-27T11:40:00Z"}}'
+status: {nodeInfo: {kubeletVersion: v1.35.9+k0s}}
+---
+apiVersion: v1
+kind: Node
+metadata: {name: worker-3}
+---
+apiVersion: k0s-monitor.io/v1
+kind: ControlPlane
+server: 10.0.0.11
+expectedK0s: {version: v1.36.4+k0s.1, from: k0sctl.yaml}
+controllers:
+- {name: ctrl-1, address: "10.0.0.11:6443", version: v1.36.4+k0s, k0sVersion: v1.36.4+k0s.1}
+- {name: ctrl-2, address: "10.0.0.12:6443", version: v1.36.4+k0s, k0sVersion: v1.36.4+k0s.1}
+- {name: ctrl-3, address: "10.0.0.13:6443", version: v1.36.3+k0s, k0sVersion: v1.36.3+k0s.0}
+---
+apiVersion: autopilot.k0sproject.io/v1beta2
+kind: Plan
+metadata: {name: autopilot, creationTimestamp: "2026-09-27T11:00:00Z"}
+spec:
+  id: product-2026.09
+  timestamp: now
+  commands:
+  - k0supdate:
+      version: v1.36.4+k0s.1
+      platforms: {linux-amd64: {url: "https://updates.example.invalid/k0s-v1.36.4+k0s.1-amd64"}}
+      targets:
+        controllers: {discovery: {static: {nodes: [ctrl-1, ctrl-2]}}}
+        workers: {discovery: {static: {nodes: [worker-1, worker-2]}}}
+status:
+  state: ApplyFailed
+  commands:
+  - id: 0
+    state: ApplyFailed
+    k0supdate:
+      controllers:
+      - {name: ctrl-1, state: SignalCompleted, lastUpdatedTimestamp: "2026-09-27T11:10:00Z"}
+      - {name: ctrl-2, state: SignalCompleted, lastUpdatedTimestamp: "2026-09-27T11:20:00Z"}
+      workers:
+      - {name: worker-1, state: SignalCompleted, lastUpdatedTimestamp: "2026-09-27T11:30:00Z"}
+      - {name: worker-2, state: SignalApplyFailed, lastUpdatedTimestamp: "2026-09-27T11:40:00Z"}

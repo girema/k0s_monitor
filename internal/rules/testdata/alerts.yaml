@@ -1,0 +1,263 @@
+# Alerts from Prometheus (M5): the shop-prod world of the usability round,
+# with the alerts its Prometheus fires. The crash-looping pod's alert and
+# the volume's alert match k0s-monitor's problems; the node alert names
+# worker-2 by its node-exporter address and matches its clock problem;
+# the checkout latency alert matches no problem.
+apiVersion: v1
+kind: Node
+metadata: {name: worker-1, labels: {kubernetes.io/hostname: worker-1}}
+status:
+  conditions:
+  - {type: Ready, status: "True", reason: KubeletReady, lastTransitionTime: "2026-09-01T00:00:00Z", lastHeartbeatTime: "2026-09-27T13:59:50Z"}
+  allocatable: {cpu: "4", memory: 8Gi, pods: "110"}
+  capacity: {cpu: "4", memory: 8Gi, pods: "110"}
+  nodeInfo: {kubeletVersion: v1.36.4+k0s, osImage: Ubuntu 24.04 LTS, kernelVersion: 6.8.0-45-generic, containerRuntimeVersion: containerd://1.7.27}
+---
+apiVersion: v1
+kind: Node
+metadata: {name: worker-2, labels: {kubernetes.io/hostname: worker-2}}
+status:
+  conditions:
+  - {type: Ready, status: "True", reason: KubeletReady, lastTransitionTime: "2026-09-01T00:00:00Z", lastHeartbeatTime: "2026-09-27T13:59:50Z"}
+  allocatable: {cpu: "4", memory: 8Gi, pods: "110"}
+  capacity: {cpu: "4", memory: 8Gi, pods: "110"}
+  nodeInfo: {kubeletVersion: v1.36.4+k0s, osImage: Ubuntu 24.04 LTS, kernelVersion: 6.8.0-45-generic, containerRuntimeVersion: containerd://1.7.27}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: shop
+  labels: {app.kubernetes.io/managed-by: Helm}
+  annotations: {deployment.kubernetes.io/revision: "5"}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: web}}
+  template:
+    metadata: {labels: {app: web}}
+    spec: {containers: [{name: web, image: "shop/web:1.5.0"}]}
+status:
+  replicas: 2
+  updatedReplicas: 1
+  readyReplicas: 1
+  availableReplicas: 1
+  conditions:
+  - {type: Available, status: "True", reason: MinimumReplicasAvailable, lastTransitionTime: "2026-09-20T09:02:00Z", lastUpdateTime: "2026-09-20T09:02:00Z"}
+  - {type: Progressing, status: "True", reason: ReplicaSetUpdated, lastTransitionTime: "2026-09-27T13:40:00Z", lastUpdateTime: "2026-09-27T13:40:00Z"}
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: web-6f7e8d9c0
+  namespace: shop
+  creationTimestamp: "2026-09-27T13:40:00Z"
+  annotations: {deployment.kubernetes.io/revision: "5"}
+  ownerReferences: [{apiVersion: apps/v1, kind: Deployment, name: web, uid: d-web, controller: true}]
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: web, pod-template-hash: 6f7e8d9c0}}
+  template:
+    metadata: {labels: {app: web, pod-template-hash: 6f7e8d9c0}}
+    spec:
+      containers:
+      - name: web
+        image: "shop/web:1.5.0"
+        env:
+        - {name: LISTEN, value: ":8080"}
+        - {name: API_KEY, value: "sk-new-0987654321"}
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: web-5d4c3b2a1
+  namespace: shop
+  creationTimestamp: "2026-09-20T09:00:00Z"
+  annotations: {deployment.kubernetes.io/revision: "4"}
+  ownerReferences: [{apiVersion: apps/v1, kind: Deployment, name: web, uid: d-web, controller: true}]
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: web, pod-template-hash: 5d4c3b2a1}}
+  template:
+    metadata: {labels: {app: web, pod-template-hash: 5d4c3b2a1}}
+    spec:
+      containers:
+      - name: web
+        image: "shop/web:1.4.0"
+        env:
+        - {name: LISTEN, value: ":8080"}
+        - {name: API_KEY, value: "sk-old-1234567890"}
+        - {name: DATABASE_URL, value: "postgres://web@postgres:5432/web"}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-6f7e8d9c0-q2w3e
+  namespace: shop
+  labels: {app: web, pod-template-hash: 6f7e8d9c0}
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: web-6f7e8d9c0, uid: rs-web5, controller: true}]
+spec:
+  nodeName: worker-1
+  containers: [{name: web, image: "shop/web:1.5.0"}]
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "False"}]
+  containerStatuses:
+  - name: web
+    image: "shop/web:1.5.0"
+    imageID: ""
+    ready: false
+    restartCount: 7
+    state: {waiting: {reason: CrashLoopBackOff}}
+    lastState: {terminated: {exitCode: 2, reason: Error, startedAt: "2026-09-27T13:58:30Z", finishedAt: "2026-09-27T13:58:31Z"}}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-5d4c3b2a1-r4t5y
+  namespace: shop
+  labels: {app: web, pod-template-hash: 5d4c3b2a1}
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: web-5d4c3b2a1, uid: rs-web4, controller: true}]
+spec:
+  nodeName: worker-1
+  containers: [{name: web, image: "shop/web:1.4.0"}]
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "True"}]
+  containerStatuses:
+  - name: web
+    image: "shop/web:1.4.0"
+    imageID: ""
+    ready: true
+    restartCount: 0
+    state: {running: {startedAt: "2026-09-20T09:01:00Z"}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: orders, namespace: shop, annotations: {deployment.kubernetes.io/revision: "3"}}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: orders}}
+  template:
+    metadata: {labels: {app: orders}}
+    spec: {containers: [{name: orders, image: "shop/orders:3.1.0"}]}
+status: {replicas: 2, updatedReplicas: 2, readyReplicas: 2, availableReplicas: 2}
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: orders-6b5c4d3e2
+  namespace: shop
+  annotations: {deployment.kubernetes.io/revision: "3"}
+  ownerReferences: [{apiVersion: apps/v1, kind: Deployment, name: orders, uid: d-orders, controller: true}]
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: orders, pod-template-hash: 6b5c4d3e2}}
+  template:
+    metadata: {labels: {app: orders, pod-template-hash: 6b5c4d3e2}}
+    spec: {containers: [{name: orders, image: "shop/orders:3.1.0"}]}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: orders-6b5c4d3e2-k8j7h
+  namespace: shop
+  labels: {app: orders, pod-template-hash: 6b5c4d3e2}
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: orders-6b5c4d3e2, uid: rs-orders, controller: true}]
+spec: {nodeName: worker-2, containers: [{name: orders, image: "shop/orders:3.1.0"}]}
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "True"}]
+  containerStatuses: [{name: orders, image: "shop/orders:3.1.0", imageID: "", ready: true, restartCount: 0, state: {running: {startedAt: "2026-09-25T08:00:00Z"}}}]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: orders-6b5c4d3e2-m9n0p
+  namespace: shop
+  labels: {app: orders, pod-template-hash: 6b5c4d3e2}
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: orders-6b5c4d3e2, uid: rs-orders, controller: true}]
+spec: {nodeName: worker-1, containers: [{name: orders, image: "shop/orders:3.1.0"}]}
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "True"}]
+  containerStatuses: [{name: orders, image: "shop/orders:3.1.0", imageID: "", ready: true, restartCount: 0, state: {running: {startedAt: "2026-09-25T08:00:00Z"}}}]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: {name: postgres, namespace: shop}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: postgres}}
+  template:
+    metadata: {labels: {app: postgres}}
+    spec: {containers: [{name: postgres, image: "postgres:16.4"}]}
+status: {replicas: 1, readyReplicas: 1, currentReplicas: 1, updatedReplicas: 1}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: postgres-0
+  namespace: shop
+  labels: {app: postgres}
+  ownerReferences: [{apiVersion: apps/v1, kind: StatefulSet, name: postgres, uid: sts-postgres, controller: true}]
+spec:
+  nodeName: worker-2
+  containers: [{name: postgres, image: "postgres:16.4"}]
+  volumes: [{name: data, persistentVolumeClaim: {claimName: data-postgres-0}}]
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "True"}]
+  containerStatuses: [{name: postgres, image: "postgres:16.4", imageID: "", ready: true, restartCount: 0, state: {running: {startedAt: "2026-09-10T08:00:00Z"}}}]
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: openebs-hostpath
+  annotations: {storageclass.kubernetes.io/is-default-class: "true"}
+provisioner: openebs.io/local
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: data-postgres-0, namespace: shop, creationTimestamp: "2026-09-01T00:00:00Z", labels: {app: postgres}}
+spec: {storageClassName: openebs-hostpath, accessModes: [ReadWriteOnce], resources: {requests: {storage: 10Gi}}}
+status: {phase: Bound, capacity: {storage: 10Gi}}
+---
+apiVersion: k0s-monitor.io/v1
+kind: Metrics
+have: [kubelet-volumes, node-exporter, timex]
+volumes:
+  shop/data-postgres-0: {used: 9.3Gi, capacity: 10Gi, growthPerHour: 150Mi, growthWindow: 6h, r2: 0.97, baselinePerHour: 20Mi}
+nodes:
+  worker-2: {instance: "10.0.0.12:9100", clockOffset: 2.5, clockSynced: 0}
+alerts:
+- name: KubePodCrashLooping
+  severity: warning
+  labels: {namespace: shop, pod: web-6f7e8d9c0-q2w3e, container: web, job: kube-state-metrics, service: kube-state-metrics}
+  summary: Pod is crash looping.
+  description: 'Pod shop/web-6f7e8d9c0-q2w3e (web) is in waiting state (reason: "CrashLoopBackOff").'
+  runbook: https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubepodcrashlooping
+  for: 15m
+- name: KubePersistentVolumeFillingUp
+  severity: critical
+  labels: {namespace: shop, persistentvolumeclaim: data-postgres-0, node: worker-1}
+  summary: PersistentVolume is filling up.
+  for: 5m
+- name: NodeClockNotSynchronising
+  severity: warning
+  labels: {instance: "10.0.0.12:9100", job: node-exporter}
+  summary: Clock not synchronising.
+  for: 1h
+- name: CheckoutLatencyHigh
+  severity: warning
+  labels: {namespace: shop, service: checkout}
+  summary: Checkout answers slowly.
+  for: 10m
+---
+apiVersion: k0s-monitor.io/v1
+kind: CrashLogs
+logs:
+- pod: shop/web-6f7e8d9c0-q2w3e
+  container: web
+  log: |
+    web 1.5.0 starting
+    config error: environment variable DATABASE_URL is not set

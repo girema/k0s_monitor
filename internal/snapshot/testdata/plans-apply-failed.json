@@ -1,0 +1,68 @@
+{
+  "apiVersion": "v1",
+  "items": [
+    {
+      "apiVersion": "autopilot.k0sproject.io/v1beta2",
+      "kind": "Plan",
+      "metadata": {
+        "creationTimestamp": "2026-09-28T17:52:12Z",
+        "name": "autopilot"
+      },
+      "spec": {
+        "commands": [
+          {
+            "k0supdate": {
+              "platforms": {
+                "linux-amd64": {
+                  "url": "https://updates.example.invalid/k0s"
+                },
+                "linux-arm64": {
+                  "url": "https://updates.example.invalid/k0s"
+                }
+              },
+              "targets": {
+                "controllers": {
+                  "discovery": {
+                    "static": {
+                      "nodes": [
+                        "k0sm-ap"
+                      ]
+                    }
+                  },
+                  "limits": {
+                    "concurrent": 1
+                  }
+                }
+              },
+              "version": "v1.36.5+k0s.0"
+            }
+          }
+        ],
+        "id": "e2e-bad-download",
+        "timestamp": "now"
+      },
+      "status": {
+        "commands": [
+          {
+            "id": 0,
+            "k0supdate": {
+              "controllers": [
+                {
+                  "lastUpdatedTimestamp": "2026-09-28T17:52:12Z",
+                  "name": "k0sm-ap",
+                  "state": "SignalApplyFailed"
+                }
+              ]
+            },
+            "state": "ApplyFailed"
+          }
+        ],
+        "state": "ApplyFailed"
+      }
+    }
+  ],
+  "kind": "List",
+  "metadata": {
+    "resourceVersion": ""
+  }
+}

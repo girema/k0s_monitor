@@ -1,0 +1,53 @@
+# An update to v1.36.4+k0s.1 through Autopilot is running: ctrl-1 is done,
+# ctrl-2 got the signal 45 minutes ago and hasn't finished
+# (k0s.update-stuck, High), and worker-1 waits its turn. The nodes differ
+# meanwhile, which is expected: no k0s.version-drift. A second plan was
+# made two hours ago and Autopilot never picked it up (k0s.update-stuck).
+apiVersion: v1
+kind: Node
+metadata: {name: worker-1}
+status: {nodeInfo: {kubeletVersion: v1.36.3+k0s}}
+---
+apiVersion: k0s-monitor.io/v1
+kind: ControlPlane
+server: 10.0.0.11
+controllers:
+- {name: ctrl-1, address: "10.0.0.11:6443", version: v1.36.4+k0s, k0sVersion: v1.36.4+k0s.1}
+- {name: ctrl-2, address: "10.0.0.12:6443", version: v1.36.3+k0s, k0sVersion: v1.36.3+k0s.0, updateStatus: Restart}
+---
+apiVersion: autopilot.k0sproject.io/v1beta2
+kind: Plan
+metadata: {name: autopilot, creationTimestamp: "2026-09-27T13:00:00Z"}
+spec:
+  id: product-2026.09
+  timestamp: now
+  commands:
+  - k0supdate:
+      version: v1.36.4+k0s.1
+      platforms: {linux-amd64: {url: "https://updates.example.invalid/k0s-v1.36.4+k0s.1-amd64"}}
+      targets:
+        controllers: {discovery: {static: {nodes: [ctrl-1, ctrl-2]}}}
+        workers: {discovery: {static: {nodes: [worker-1]}}}
+status:
+  state: SchedulableWait
+  commands:
+  - id: 0
+    state: SchedulableWait
+    k0supdate:
+      controllers:
+      - {name: ctrl-1, state: SignalCompleted, lastUpdatedTimestamp: "2026-09-27T13:05:00Z"}
+      - {name: ctrl-2, state: SignalSent, lastUpdatedTimestamp: "2026-09-27T13:15:00Z"}
+      workers:
+      - {name: worker-1, state: SignalPending, lastUpdatedTimestamp: "2026-09-27T13:01:00Z"}
+---
+apiVersion: autopilot.k0sproject.io/v1beta2
+kind: Plan
+metadata: {name: product-hotfix, creationTimestamp: "2026-09-27T12:00:00Z"}
+spec:
+  id: hotfix
+  timestamp: now
+  commands:
+  - airgapupdate:
+      version: v1.36.4+k0s.1
+      platforms: {linux-amd64: {url: "https://updates.example.invalid/bundle.tar"}}
+      workers: {discovery: {static: {nodes: [worker-1]}}}

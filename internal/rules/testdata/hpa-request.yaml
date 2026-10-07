@@ -1,0 +1,80 @@
+# accounts/login's autoscaler (named session-cache) scales on CPU utilization, but
+# the session-cache container of its pods has no CPU request, so it can't
+# compute it (hpa.no-metrics, the missing-request case). The metrics API
+# works. login is deployed by Helm. The clock is 2026-09-27 14:00.
+apiVersion: v1
+kind: Node
+metadata: {name: worker-1}
+status:
+  conditions: [{type: Ready, status: "True", lastTransitionTime: "2026-09-01T00:00:00Z"}]
+  allocatable: {cpu: "8", memory: 32Gi, pods: "110"}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: login
+  namespace: accounts
+  labels: {app.kubernetes.io/managed-by: Helm}
+  annotations: {meta.helm.sh/release-name: login, deployment.kubernetes.io/revision: "3"}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: login}}
+  template:
+    metadata: {labels: {app: login}}
+    spec:
+      containers:
+      - {name: login, image: "registry.local/accounts/login:2.3", resources: {requests: {cpu: 250m, memory: 256Mi}}}
+      - {name: session-cache, image: "registry.local/accounts/session-cache:1.2"}
+status: {replicas: 2, readyReplicas: 2, availableReplicas: 2}
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: login-5c7d9f6b48
+  namespace: accounts
+  annotations: {deployment.kubernetes.io/revision: "3"}
+  ownerReferences: [{apiVersion: apps/v1, kind: Deployment, name: login, uid: d-login, controller: true}]
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: login, pod-template-hash: 5c7d9f6b48}}
+  template:
+    metadata: {labels: {app: login, pod-template-hash: 5c7d9f6b48}}
+    spec:
+      containers:
+      - {name: login, image: "registry.local/accounts/login:2.3", resources: {requests: {cpu: 250m, memory: 256Mi}}}
+      - {name: session-cache, image: "registry.local/accounts/session-cache:1.2"}
+status: {replicas: 2, readyReplicas: 2}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: login-5c7d9f6b48-k2x9m
+  namespace: accounts
+  labels: {app: login, pod-template-hash: 5c7d9f6b48}
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: login-5c7d9f6b48, uid: rs-login, controller: true}]
+spec:
+  nodeName: worker-1
+  containers:
+  - {name: login, image: "registry.local/accounts/login:2.3", resources: {requests: {cpu: 250m, memory: 256Mi}}}
+  - {name: session-cache, image: "registry.local/accounts/session-cache:1.2"}
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "True"}]
+  containerStatuses:
+  - {name: login, image: "registry.local/accounts/login:2.3", imageID: "", ready: true, restartCount: 0, state: {running: {startedAt: "2026-09-20T00:00:00Z"}}}
+  - {name: session-cache, image: "registry.local/accounts/session-cache:1.2", imageID: "", ready: true, restartCount: 0, state: {running: {startedAt: "2026-09-20T00:00:00Z"}}}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: session-cache, namespace: accounts}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: login}
+  minReplicas: 2
+  maxReplicas: 6
+  metrics: [{type: Resource, resource: {name: cpu, target: {type: Utilization, averageUtilization: 80}}}]
+status:
+  currentReplicas: 2
+  desiredReplicas: 2
+  conditions:
+  - {type: AbleToScale, status: "True", reason: SucceededGetScale, lastTransitionTime: "2026-09-20T00:00:00Z"}
+  - {type: ScalingActive, status: "False", reason: FailedGetResourceMetric, message: "the HPA was unable to compute the replica count: failed to get cpu utilization: missing request for cpu in container session-cache of Pod login-5c7d9f6b48-k2x9m", lastTransitionTime: "2026-09-27T12:00:00Z"}

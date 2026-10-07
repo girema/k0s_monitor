@@ -1,0 +1,73 @@
+# report-worker: one of two replicas is OOM-killed repeatedly.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: report-worker, namespace: batch, creationTimestamp: "2026-09-01T00:00:00Z"}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: report-worker}}
+  template:
+    metadata: {labels: {app: report-worker}}
+    spec: {containers: [{name: worker, image: "registry.local/report:2.0"}]}
+status:
+  replicas: 2
+  readyReplicas: 1
+  availableReplicas: 1
+  conditions:
+  - {type: Available, status: "True", lastTransitionTime: "2026-09-10T00:00:00Z"}
+  - {type: Progressing, status: "True", reason: NewReplicaSetAvailable, lastTransitionTime: "2026-09-10T00:00:00Z", lastUpdateTime: "2026-09-10T00:00:00Z"}
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: report-worker-5d8f
+  namespace: batch
+  ownerReferences: [{apiVersion: apps/v1, kind: Deployment, name: report-worker, uid: d2, controller: true}]
+spec:
+  selector: {matchLabels: {app: report-worker}}
+  template:
+    metadata: {labels: {app: report-worker}}
+    spec: {containers: [{name: worker, image: "registry.local/report:2.0"}]}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: report-worker-5d8f-aaaaa
+  namespace: batch
+  labels: {app: report-worker, pod-template-hash: 5d8f}
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: report-worker-5d8f, uid: rs2, controller: true}]
+spec:
+  nodeName: worker-2
+  containers:
+  - name: worker
+    image: "registry.local/report:2.0"
+    resources: {requests: {memory: 256Mi}, limits: {memory: 512Mi}}
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "False"}]
+  containerStatuses:
+  - name: worker
+    image: "registry.local/report:2.0"
+    imageID: ""
+    ready: false
+    restartCount: 7
+    state: {waiting: {reason: CrashLoopBackOff}}
+    lastState: {terminated: {exitCode: 137, reason: OOMKilled, startedAt: "2026-09-27T13:54:00Z", finishedAt: "2026-09-27T13:55:00Z"}}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: report-worker-5d8f-bbbbb
+  namespace: batch
+  labels: {app: report-worker, pod-template-hash: 5d8f}
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: report-worker-5d8f, uid: rs2, controller: true}]
+spec:
+  nodeName: worker-1
+  containers:
+  - name: worker
+    image: "registry.local/report:2.0"
+    resources: {limits: {memory: 512Mi}}
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "True"}]
+  containerStatuses:
+  - {name: worker, image: "registry.local/report:2.0", imageID: "", ready: true, restartCount: 0, state: {running: {startedAt: "2026-09-20T00:00:00Z"}}}

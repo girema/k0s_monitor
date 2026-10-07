@@ -1,0 +1,461 @@
+# shop/web's autoscaler has been at its maximum for an hour (hpa.maxed).
+# shop/api's autoscaler can't read metrics (hpa.no-metrics) because the
+# metrics API is down (apiservice.unavailable), which it folds under.
+# The shop quota is used up for pods (quota.exhausted, High).
+# shop/cache's redis uses 94% of its memory limit and is CPU-throttled
+# 40% of the time (container.near-limit).
+# 37 warning events in the last 10 minutes (36 probe warnings and the quota
+# refusal) against 5 in the 50 minutes before (events.warning-spike).
+apiVersion: v1
+kind: Node
+metadata: {name: worker-1}
+status:
+  conditions: [{type: Ready, status: "True", lastTransitionTime: "2026-09-01T00:00:00Z"}]
+  allocatable: {cpu: "8", memory: 32Gi, pods: "110"}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: web, namespace: shop}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: web}
+  minReplicas: 2
+  maxReplicas: 10
+  metrics: [{type: Resource, resource: {name: cpu, target: {type: Utilization, averageUtilization: 70}}}]
+status:
+  currentReplicas: 10
+  desiredReplicas: 10
+  currentMetrics: [{type: Resource, resource: {name: cpu, current: {averageUtilization: 96}}}]
+  conditions:
+  - {type: AbleToScale, status: "True", reason: ReadyForNewScale, lastTransitionTime: "2026-09-27T12:00:00Z"}
+  - {type: ScalingActive, status: "True", reason: ValidMetricFound, lastTransitionTime: "2026-09-27T12:00:00Z"}
+  - {type: ScalingLimited, status: "True", reason: TooManyReplicas, message: "the desired replica count is more than the maximum replica count", lastTransitionTime: "2026-09-27T13:00:00Z"}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: api, namespace: shop}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: api}
+  minReplicas: 2
+  maxReplicas: 6
+status:
+  currentReplicas: 2
+  desiredReplicas: 2
+  conditions:
+  - {type: ScalingActive, status: "False", reason: FailedGetResourceMetric, message: "the HPA was unable to compute the replica count: failed to get cpu utilization: unable to get metrics for resource cpu: unable to fetch metrics from resource metrics API: the server is currently unable to handle the request (get pods.metrics.k8s.io)", lastTransitionTime: "2026-09-27T13:30:00Z"}
+---
+apiVersion: apiregistration.k8s.io/v1
+kind: APIService
+metadata: {name: v1beta1.metrics.k8s.io}
+spec: {group: metrics.k8s.io, version: v1beta1, service: {namespace: kube-system, name: metrics-server}}
+status:
+  conditions: [{type: Available, status: "False", reason: MissingEndpoints, message: "endpoints for service/metrics-server have no addresses", lastTransitionTime: "2026-09-27T13:20:00Z"}]
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata: {name: shop-quota, namespace: shop}
+spec: {hard: {pods: "10", requests.memory: 10Gi}}
+status:
+  hard: {pods: "10", requests.memory: 10Gi}
+  used: {pods: "10", requests.memory: 6Gi}
+---
+apiVersion: v1
+kind: Event
+metadata: {name: web-rs.quota, namespace: shop}
+involvedObject: {kind: ReplicaSet, namespace: shop, name: web-7d9f6c5b4}
+type: Warning
+reason: FailedCreate
+message: 'Error creating: pods "web-7d9f6c5b4-zz" is forbidden: exceeded quota: shop-quota, requested: pods=1, used: pods=10, limited: pods=10'
+lastTimestamp: "2026-09-27T13:59:00Z"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cache-6b8d9f7c5-a1
+  namespace: shop
+  labels: {app: cache, pod-template-hash: 6b8d9f7c5}
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: cache-6b8d9f7c5, uid: rs1, controller: true}]
+spec:
+  nodeName: worker-1
+  containers:
+  - name: redis
+    image: redis:8
+    resources: {limits: {memory: 512Mi, cpu: 500m}, requests: {memory: 256Mi, cpu: 100m}}
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "True", lastTransitionTime: "2026-09-20T00:00:00Z"}]
+  containerStatuses: [{name: redis, ready: true, state: {running: {startedAt: "2026-09-20T00:00:00Z"}}}]
+---
+apiVersion: k0s-monitor.io/v1
+kind: Metrics
+have: [cadvisor]
+containers:
+  shop/cache-6b8d9f7c5-a1/redis: {workingSet: 481Mi, peak7d: 500Mi, throttled: 0.4}
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-0, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-0}
+type: Warning
+reason: BackOff
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:59:55Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-1, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-1}
+type: Warning
+reason: Unhealthy
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:59:40Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-2, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-2}
+type: Warning
+reason: Unhealthy
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:59:25Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-3, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-3}
+type: Warning
+reason: BackOff
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:59:10Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-4, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-4}
+type: Warning
+reason: Unhealthy
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:58:55Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-5, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-5}
+type: Warning
+reason: Unhealthy
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:58:40Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-6, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-6}
+type: Warning
+reason: BackOff
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:58:25Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-7, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-0}
+type: Warning
+reason: Unhealthy
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:58:10Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-8, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-1}
+type: Warning
+reason: Unhealthy
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:57:55Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-9, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-2}
+type: Warning
+reason: BackOff
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:57:40Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-10, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-3}
+type: Warning
+reason: Unhealthy
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:57:25Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-11, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-4}
+type: Warning
+reason: Unhealthy
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:57:10Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-12, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-5}
+type: Warning
+reason: BackOff
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:56:55Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-13, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-6}
+type: Warning
+reason: Unhealthy
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:56:40Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-14, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-0}
+type: Warning
+reason: Unhealthy
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:56:25Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-15, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-1}
+type: Warning
+reason: BackOff
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:56:10Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-16, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-2}
+type: Warning
+reason: Unhealthy
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:55:55Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-17, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-3}
+type: Warning
+reason: Unhealthy
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:55:40Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-18, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-4}
+type: Warning
+reason: BackOff
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:55:25Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-19, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-5}
+type: Warning
+reason: Unhealthy
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:55:10Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-20, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-6}
+type: Warning
+reason: Unhealthy
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:54:55Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-21, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-0}
+type: Warning
+reason: BackOff
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:54:40Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-22, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-1}
+type: Warning
+reason: Unhealthy
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:54:25Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-23, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-2}
+type: Warning
+reason: Unhealthy
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:54:10Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-24, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-3}
+type: Warning
+reason: BackOff
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:53:55Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-25, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-4}
+type: Warning
+reason: Unhealthy
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:53:40Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-26, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-5}
+type: Warning
+reason: Unhealthy
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:53:25Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-27, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-6}
+type: Warning
+reason: BackOff
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:53:10Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-28, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-0}
+type: Warning
+reason: Unhealthy
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:52:55Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-29, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-1}
+type: Warning
+reason: Unhealthy
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:52:40Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-30, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-2}
+type: Warning
+reason: BackOff
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:52:25Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-31, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-3}
+type: Warning
+reason: Unhealthy
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:52:10Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-32, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-4}
+type: Warning
+reason: Unhealthy
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:51:55Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-33, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-5}
+type: Warning
+reason: BackOff
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:51:40Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-34, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-6}
+type: Warning
+reason: Unhealthy
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:51:25Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-35, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-0}
+type: Warning
+reason: Unhealthy
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:51:10Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-36, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-1}
+type: Warning
+reason: Unhealthy
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:04:00Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-37, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-2}
+type: Warning
+reason: Unhealthy
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:03:00Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-38, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-3}
+type: Warning
+reason: Unhealthy
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:02:00Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-39, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-4}
+type: Warning
+reason: Unhealthy
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:01:00Z"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: spike-40, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-5}
+type: Warning
+reason: Unhealthy
+message: "Readiness probe failed: connection refused"
+lastTimestamp: "2026-09-27T13:00:00Z"

@@ -1,0 +1,126 @@
+# job.failed: ops/migrate-v3 gave up (BackoffLimitExceeded); its last pod
+# exited with code 2.
+# cronjob.failing: ops/nightly-report failed its last 2 runs; the run before
+# them succeeded.
+# cronjob.missed: ops/sync-hourly should run every hour, but its 11:00 run
+# is still active and concurrencyPolicy is Forbid.
+apiVersion: batch/v1
+kind: Job
+metadata: {name: migrate-v3, namespace: ops, creationTimestamp: "2026-09-27T13:00:00Z"}
+spec:
+  template:
+    spec: {restartPolicy: Never, containers: [{name: migrate, image: "registry.local/migrate:3"}]}
+status:
+  failed: 6
+  conditions:
+  - {type: Failed, status: "True", reason: BackoffLimitExceeded, message: "Job has reached the specified backoff limit", lastTransitionTime: "2026-09-27T13:20:00Z"}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: migrate-v3-x7k2p
+  namespace: ops
+  creationTimestamp: "2026-09-27T13:18:00Z"
+  ownerReferences: [{apiVersion: batch/v1, kind: Job, name: migrate-v3, uid: j1, controller: true}]
+spec:
+  restartPolicy: Never
+  containers: [{name: migrate, image: "registry.local/migrate:3"}]
+status:
+  phase: Failed
+  containerStatuses:
+  - {name: migrate, ready: false, state: {terminated: {reason: Error, exitCode: 2, finishedAt: "2026-09-27T13:19:00Z"}}}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata: {name: nightly-report, namespace: ops, uid: cj1, creationTimestamp: "2026-09-01T00:00:00Z"}
+spec:
+  schedule: "0 2 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec: {restartPolicy: Never, containers: [{name: report, image: "registry.local/report:9"}]}
+status:
+  lastScheduleTime: "2026-09-27T02:00:00Z"
+  lastSuccessfulTime: "2026-09-25T02:10:00Z"
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nightly-report-29308680
+  namespace: ops
+  creationTimestamp: "2026-09-25T02:00:00Z"
+  ownerReferences: [{apiVersion: batch/v1, kind: CronJob, name: nightly-report, uid: cj-nightly-report, controller: true}]
+spec:
+  template:
+    spec: {restartPolicy: Never, containers: [{name: c, image: "img:1"}]}
+status:
+  conditions: [{type: Complete, status: "True", lastTransitionTime: "2026-09-25T02:10:00Z"}]
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nightly-report-29310120
+  namespace: ops
+  creationTimestamp: "2026-09-26T02:00:00Z"
+  ownerReferences: [{apiVersion: batch/v1, kind: CronJob, name: nightly-report, uid: cj-nightly-report, controller: true}]
+spec:
+  template:
+    spec: {restartPolicy: Never, containers: [{name: c, image: "img:1"}]}
+status:
+  conditions: [{type: Failed, status: "True", reason: BackoffLimitExceeded, message: "Job has reached the specified backoff limit", lastTransitionTime: "2026-09-26T02:20:00Z"}]
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nightly-report-29311560
+  namespace: ops
+  creationTimestamp: "2026-09-27T02:00:00Z"
+  ownerReferences: [{apiVersion: batch/v1, kind: CronJob, name: nightly-report, uid: cj-nightly-report, controller: true}]
+spec:
+  template:
+    spec: {restartPolicy: Never, containers: [{name: c, image: "img:1"}]}
+status:
+  conditions: [{type: Failed, status: "True", reason: BackoffLimitExceeded, message: "Job has reached the specified backoff limit", lastTransitionTime: "2026-09-27T02:20:00Z"}]
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sync-hourly-29311740
+  namespace: ops
+  creationTimestamp: "2026-09-27T11:00:00Z"
+  ownerReferences: [{apiVersion: batch/v1, kind: CronJob, name: sync-hourly, uid: cj-sync-hourly, controller: true}]
+spec:
+  template:
+    spec: {restartPolicy: Never, containers: [{name: c, image: "img:1"}]}
+status:
+  conditions: []
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nightly-report-29311560-q8
+  namespace: ops
+  creationTimestamp: "2026-09-27T02:15:00Z"
+  ownerReferences: [{apiVersion: batch/v1, kind: Job, name: nightly-report-29311560, uid: j2, controller: true}]
+spec:
+  restartPolicy: Never
+  containers: [{name: report, image: "registry.local/report:9"}]
+status:
+  phase: Failed
+  containerStatuses:
+  - {name: report, ready: false, state: {terminated: {reason: Error, exitCode: 1, finishedAt: "2026-09-27T02:16:00Z"}}}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata: {name: sync-hourly, namespace: ops, creationTimestamp: "2026-09-01T00:00:00Z"}
+spec:
+  schedule: "0 * * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec: {restartPolicy: Never, containers: [{name: sync, image: "registry.local/sync:2"}]}
+status:
+  lastScheduleTime: "2026-09-27T11:00:00Z"
+  lastSuccessfulTime: "2026-09-27T10:05:00Z"
+  active: [{apiVersion: batch/v1, kind: Job, namespace: ops, name: sync-hourly-29311740}]

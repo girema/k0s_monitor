@@ -1,0 +1,107 @@
+# V04: kernel errors. worker-1: node-problem-detector reports disk I/O
+# errors and hung tasks; an older error and a container's own OOM don't
+# count. worker-2: node-exporter counts 3 OOM kills in 15 minutes, one of
+# them a container at its limit, and eth0's link going down and up (veth
+# and cali interfaces come and go with pods). worker-3: a kernel oops
+# from something that isn't node-problem-detector doesn't count.
+apiVersion: v1
+kind: Node
+metadata: {name: worker-1}
+status:
+  addresses: [{type: InternalIP, address: 10.0.0.11}]
+  conditions: [{type: Ready, status: "True", lastTransitionTime: "2026-09-01T00:00:00Z"}]
+---
+apiVersion: v1
+kind: Node
+metadata: {name: worker-2}
+status:
+  addresses: [{type: InternalIP, address: 10.0.0.12}]
+  conditions: [{type: Ready, status: "True", lastTransitionTime: "2026-09-01T00:00:00Z"}]
+---
+apiVersion: v1
+kind: Node
+metadata: {name: worker-3}
+status:
+  addresses: [{type: InternalIP, address: 10.0.0.13}]
+  conditions: [{type: Ready, status: "True", lastTransitionTime: "2026-09-01T00:00:00Z"}]
+---
+apiVersion: v1
+kind: Event
+metadata: {name: worker-1.io, namespace: default}
+involvedObject: {kind: Node, name: worker-1}
+source: {component: kernel-monitor, host: worker-1}
+type: Warning
+reason: IOError
+count: 12
+lastTimestamp: "2026-09-27T13:50:00Z"
+message: "Buffer I/O error on dev sdb1, logical block 1234, async page read"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: worker-1.hung, namespace: default}
+involvedObject: {kind: Node, name: worker-1}
+source: {component: kernel-monitor, host: worker-1}
+type: Warning
+reason: TaskHung
+count: 2
+lastTimestamp: "2026-09-27T13:55:00Z"
+message: "task jbd2/sdb1-8:412 blocked for more than 120 seconds."
+---
+apiVersion: v1
+kind: Event
+metadata: {name: worker-1.old, namespace: default}
+involvedObject: {kind: Node, name: worker-1}
+source: {component: kernel-monitor, host: worker-1}
+type: Warning
+reason: Ext4Error
+lastTimestamp: "2026-09-27T11:00:00Z"
+message: "EXT4-fs error (device sdb1): too long ago to count"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: worker-1.cgroup-oom, namespace: default}
+involvedObject: {kind: Node, name: worker-1}
+source: {component: kernel-monitor, host: worker-1}
+type: Warning
+reason: OOMKilling
+lastTimestamp: "2026-09-27T13:58:00Z"
+message: "Memory cgroup out of memory: Killed process 4242 (java) total-vm:2048000kB, anon-rss:1024000kB, file-rss:0kB"
+---
+apiVersion: v1
+kind: Event
+metadata: {name: worker-3.oops, namespace: default}
+involvedObject: {kind: Node, name: worker-3}
+source: {component: something-else, host: worker-3}
+type: Warning
+reason: KernelOops
+lastTimestamp: "2026-09-27T13:58:00Z"
+message: "BUG: unable to handle kernel NULL pointer dereference"
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: batch-1, namespace: jobs, uid: p-batch-1}
+spec: {nodeName: worker-2, containers: [{name: worker, image: "registry.local/batch:1", resources: {limits: {memory: 256Mi}}}]}
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "True"}]
+  containerStatuses:
+  - name: worker
+    image: "registry.local/batch:1"
+    imageID: ""
+    ready: true
+    restartCount: 1
+    state: {running: {startedAt: "2026-09-27T13:55:00Z"}}
+    lastState: {terminated: {exitCode: 137, reason: OOMKilled, finishedAt: "2026-09-27T13:54:00Z"}}
+---
+apiVersion: k0s-monitor.io/v1
+kind: Metrics
+have: [node-exporter]
+nodes:
+  worker-1: {instance: "10.0.0.11:9100", oomKills15m: 0}
+  worker-2: {instance: "10.0.0.12:9100", oomKills15m: 3, linkFlaps: {eth0: 4, veth1a2b: 10, cali77: 6}}
+  worker-3: {instance: "10.0.0.13:9100"}
+alerts:
+- name: NodeDiskIOSaturation
+  severity: warning
+  labels: {job: node-exporter, instance: "10.0.0.11:9100", device: sdb}
+  summary: Disk IO queue is high.

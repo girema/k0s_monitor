@@ -1,0 +1,42 @@
+# nightly-backup: the CronJob's pod cannot pull a tag that does not exist.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nightly-backup-29001
+  namespace: batch
+  ownerReferences: [{apiVersion: batch/v1, kind: CronJob, name: nightly-backup, uid: cj1, controller: true}]
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers: [{name: backup, image: "registry.local/backup:v2.4"}]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nightly-backup-29001-q7xkz
+  namespace: batch
+  uid: pod-backup-uid
+  ownerReferences: [{apiVersion: batch/v1, kind: Job, name: nightly-backup-29001, uid: job1, controller: true}]
+spec:
+  nodeName: worker-1
+  restartPolicy: Never
+  containers: [{name: backup, image: "registry.local/backup:v2.4"}]
+status:
+  phase: Pending
+  containerStatuses:
+  - name: backup
+    image: "registry.local/backup:v2.4"
+    imageID: ""
+    ready: false
+    restartCount: 0
+    state: {waiting: {reason: ImagePullBackOff, message: "Back-off pulling image \"registry.local/backup:v2.4\""}}
+---
+apiVersion: v1
+kind: Event
+metadata: {name: nightly-backup-29001-q7xkz.1, namespace: batch}
+involvedObject: {kind: Pod, namespace: batch, name: nightly-backup-29001-q7xkz, uid: pod-backup-uid}
+type: Warning
+reason: Failed
+lastTimestamp: "2026-09-27T13:58:00Z"
+message: 'Failed to pull image "registry.local/backup:v2.4": rpc error: code = NotFound desc = failed to pull and unpack image "registry.local/backup:v2.4": failed to resolve reference "registry.local/backup:v2.4": registry.local/backup:v2.4: not found'

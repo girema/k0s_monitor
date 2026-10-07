@@ -1,0 +1,54 @@
+# orphan: a NodePort Service whose selector matches nothing (a typo).
+# fresh: created 30 s ago, not reported yet. healthy: has a ready endpoint.
+apiVersion: v1
+kind: Service
+metadata: {name: orphan, namespace: shop, creationTimestamp: "2026-09-01T00:00:00Z"}
+spec:
+  type: NodePort
+  selector: {app: paymnts}
+  ports: [{port: 80, protocol: TCP, nodePort: 30080}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: fresh, namespace: shop, creationTimestamp: "2026-09-27T13:59:30Z"}
+spec:
+  selector: {app: fresh}
+  ports: [{port: 80, protocol: TCP}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: healthy, namespace: shop, creationTimestamp: "2026-09-01T00:00:00Z"}
+spec:
+  selector: {app: healthy}
+  ports: [{port: 80, protocol: TCP}]
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: healthy-xyz
+  namespace: shop
+  labels: {kubernetes.io/service-name: healthy}
+addressType: IPv4
+endpoints:
+- addresses: ["10.244.2.10"]
+  conditions: {ready: true}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: external, namespace: shop, creationTimestamp: "2026-09-01T00:00:00Z"}
+spec:
+  type: ExternalName
+  externalName: db.example.com
+---
+# The pod the orphan Service was meant for.
+apiVersion: v1
+kind: Pod
+metadata: {name: payments-api-0, namespace: shop, labels: {app: payments-api}}
+spec:
+  nodeName: worker-1
+  containers: [{name: api, image: "registry.local/payments-api:1"}]
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "True", lastTransitionTime: "2026-09-20T00:00:00Z"}]
+  containerStatuses:
+  - {name: api, ready: true, state: {running: {startedAt: "2026-09-20T00:00:00Z"}}}

@@ -1,0 +1,332 @@
+# Crashes explained by their logs and by what an update changed:
+# - orders crash-loops because postgres refuses connections: postgres itself
+#   crash-loops on the ownership of its data directory, so orders folds
+#   under postgres.
+# - web crash-loops since its update to revision 5, 20 minutes ago, which
+#   removed DATABASE_URL; the pod of revision 4 still runs.
+# - mailer crash-loops on a host name that doesn't resolve.
+apiVersion: v1
+kind: Node
+metadata: {name: worker-1}
+status:
+  conditions:
+  - {type: Ready, status: "True", reason: KubeletReady, lastTransitionTime: "2026-09-01T00:00:00Z", lastHeartbeatTime: "2026-09-27T13:59:50Z"}
+  allocatable: {cpu: "4", memory: 8Gi, pods: "110"}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders
+  namespace: shop
+  annotations: {deployment.kubernetes.io/revision: "2"}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: orders}}
+  template:
+    metadata: {labels: {app: orders}}
+    spec: {containers: [{name: orders, image: "shop/orders:3.1.0"}]}
+status:
+  replicas: 1
+  updatedReplicas: 1
+  readyReplicas: 0
+  availableReplicas: 0
+  conditions:
+  - {type: Available, status: "False", reason: MinimumReplicasUnavailable, lastTransitionTime: "2026-09-27T13:20:00Z", lastUpdateTime: "2026-09-27T13:20:00Z"}
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: orders-6b5c4d3e2
+  namespace: shop
+  creationTimestamp: "2026-09-10T00:00:00Z"
+  annotations: {deployment.kubernetes.io/revision: "2"}
+  ownerReferences: [{apiVersion: apps/v1, kind: Deployment, name: orders, uid: d-orders, controller: true}]
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: orders, pod-template-hash: 6b5c4d3e2}}
+  template:
+    metadata: {labels: {app: orders, pod-template-hash: 6b5c4d3e2}}
+    spec: {containers: [{name: orders, image: "shop/orders:3.1.0"}]}
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: orders-5a4b3c2d1
+  namespace: shop
+  creationTimestamp: "2026-09-01T00:00:00Z"
+  annotations: {deployment.kubernetes.io/revision: "1"}
+  ownerReferences: [{apiVersion: apps/v1, kind: Deployment, name: orders, uid: d-orders, controller: true}]
+spec:
+  replicas: 0
+  selector: {matchLabels: {app: orders, pod-template-hash: 5a4b3c2d1}}
+  template:
+    metadata: {labels: {app: orders, pod-template-hash: 5a4b3c2d1}}
+    spec: {containers: [{name: orders, image: "shop/orders:3.0.0"}]}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: orders-6b5c4d3e2-k8j7h
+  namespace: shop
+  labels: {app: orders, pod-template-hash: 6b5c4d3e2}
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: orders-6b5c4d3e2, uid: rs-orders, controller: true}]
+spec:
+  nodeName: worker-1
+  containers: [{name: orders, image: "shop/orders:3.1.0"}]
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "False"}]
+  containerStatuses:
+  - name: orders
+    image: "shop/orders:3.1.0"
+    imageID: ""
+    ready: false
+    restartCount: 9
+    state: {waiting: {reason: CrashLoopBackOff}}
+    lastState: {terminated: {exitCode: 1, reason: Error, startedAt: "2026-09-27T13:58:00Z", finishedAt: "2026-09-27T13:58:10Z"}}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: {name: postgres, namespace: shop}
+spec:
+  replicas: 1
+  serviceName: postgres
+  selector: {matchLabels: {app: postgres}}
+  template:
+    metadata: {labels: {app: postgres}}
+    spec: {containers: [{name: postgres, image: "postgres:17"}]}
+status: {replicas: 1, readyReplicas: 0}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: postgres-0
+  namespace: shop
+  labels: {app: postgres}
+  ownerReferences: [{apiVersion: apps/v1, kind: StatefulSet, name: postgres, uid: sts-postgres, controller: true}]
+spec:
+  nodeName: worker-1
+  containers: [{name: postgres, image: "postgres:17"}]
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "False"}]
+  containerStatuses:
+  - name: postgres
+    image: "postgres:17"
+    imageID: ""
+    ready: false
+    restartCount: 14
+    state: {waiting: {reason: CrashLoopBackOff}}
+    lastState: {terminated: {exitCode: 1, reason: Error, startedAt: "2026-09-27T13:57:00Z", finishedAt: "2026-09-27T13:57:01Z"}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: postgres, namespace: shop, creationTimestamp: "2026-09-01T00:00:00Z"}
+spec:
+  type: ClusterIP
+  clusterIP: 10.96.14.2
+  clusterIPs: [10.96.14.2]
+  selector: {app: postgres}
+  ports: [{port: 5432, protocol: TCP}]
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: postgres-x1y2z
+  namespace: shop
+  labels: {kubernetes.io/service-name: postgres}
+addressType: IPv4
+endpoints:
+- addresses: ["10.244.1.20"]
+  conditions: {ready: false}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: shop
+  labels: {app.kubernetes.io/managed-by: Helm}
+  annotations: {deployment.kubernetes.io/revision: "5"}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: web}}
+  template:
+    metadata: {labels: {app: web}}
+    spec: {containers: [{name: web, image: "shop/web:1.5.0"}]}
+status:
+  replicas: 2
+  updatedReplicas: 1
+  readyReplicas: 1
+  availableReplicas: 1
+  conditions:
+  - {type: Available, status: "True", reason: MinimumReplicasAvailable, lastTransitionTime: "2026-09-20T09:02:00Z", lastUpdateTime: "2026-09-20T09:02:00Z"}
+  - {type: Progressing, status: "True", reason: ReplicaSetUpdated, lastTransitionTime: "2026-09-27T13:40:00Z", lastUpdateTime: "2026-09-27T13:40:00Z"}
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: web-6f7e8d9c0
+  namespace: shop
+  creationTimestamp: "2026-09-27T13:40:00Z"
+  annotations: {deployment.kubernetes.io/revision: "5"}
+  ownerReferences: [{apiVersion: apps/v1, kind: Deployment, name: web, uid: d-web, controller: true}]
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: web, pod-template-hash: 6f7e8d9c0}}
+  template:
+    metadata: {labels: {app: web, pod-template-hash: 6f7e8d9c0}}
+    spec:
+      containers:
+      - name: web
+        image: "shop/web:1.5.0"
+        env:
+        - {name: LISTEN, value: ":8080"}
+        - {name: API_KEY, value: "sk-new-0987654321"}
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: web-5d4c3b2a1
+  namespace: shop
+  creationTimestamp: "2026-09-20T09:00:00Z"
+  annotations: {deployment.kubernetes.io/revision: "4"}
+  ownerReferences: [{apiVersion: apps/v1, kind: Deployment, name: web, uid: d-web, controller: true}]
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: web, pod-template-hash: 5d4c3b2a1}}
+  template:
+    metadata: {labels: {app: web, pod-template-hash: 5d4c3b2a1}}
+    spec:
+      containers:
+      - name: web
+        image: "shop/web:1.4.0"
+        env:
+        - {name: LISTEN, value: ":8080"}
+        - {name: API_KEY, value: "sk-old-1234567890"}
+        - {name: DATABASE_URL, value: "postgres://web@postgres:5432/web"}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-6f7e8d9c0-q2w3e
+  namespace: shop
+  labels: {app: web, pod-template-hash: 6f7e8d9c0}
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: web-6f7e8d9c0, uid: rs-web5, controller: true}]
+spec:
+  nodeName: worker-1
+  containers: [{name: web, image: "shop/web:1.5.0"}]
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "False"}]
+  containerStatuses:
+  - name: web
+    image: "shop/web:1.5.0"
+    imageID: ""
+    ready: false
+    restartCount: 7
+    state: {waiting: {reason: CrashLoopBackOff}}
+    lastState: {terminated: {exitCode: 2, reason: Error, startedAt: "2026-09-27T13:58:30Z", finishedAt: "2026-09-27T13:58:31Z"}}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-5d4c3b2a1-r4t5y
+  namespace: shop
+  labels: {app: web, pod-template-hash: 5d4c3b2a1}
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: web-5d4c3b2a1, uid: rs-web4, controller: true}]
+spec:
+  nodeName: worker-1
+  containers: [{name: web, image: "shop/web:1.4.0"}]
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "True"}]
+  containerStatuses:
+  - name: web
+    image: "shop/web:1.4.0"
+    imageID: ""
+    ready: true
+    restartCount: 0
+    state: {running: {startedAt: "2026-09-20T09:01:00Z"}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mailer
+  namespace: shop
+  annotations: {deployment.kubernetes.io/revision: "1"}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: mailer}}
+  template:
+    metadata: {labels: {app: mailer}}
+    spec: {containers: [{name: mailer, image: "shop/mailer:1.0.0"}]}
+status:
+  replicas: 1
+  updatedReplicas: 1
+  readyReplicas: 0
+  availableReplicas: 0
+  conditions:
+  - {type: Available, status: "False", reason: MinimumReplicasUnavailable, lastTransitionTime: "2026-09-27T13:31:00Z", lastUpdateTime: "2026-09-27T13:31:00Z"}
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: mailer-7a6b5c4d3
+  namespace: shop
+  creationTimestamp: "2026-09-27T13:30:00Z"
+  annotations: {deployment.kubernetes.io/revision: "1"}
+  ownerReferences: [{apiVersion: apps/v1, kind: Deployment, name: mailer, uid: d-mailer, controller: true}]
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: mailer, pod-template-hash: 7a6b5c4d3}}
+  template:
+    metadata: {labels: {app: mailer, pod-template-hash: 7a6b5c4d3}}
+    spec: {containers: [{name: mailer, image: "shop/mailer:1.0.0"}]}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mailer-7a6b5c4d3-u7i8o
+  namespace: shop
+  labels: {app: mailer, pod-template-hash: 7a6b5c4d3}
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: mailer-7a6b5c4d3, uid: rs-mailer, controller: true}]
+spec:
+  nodeName: worker-1
+  containers: [{name: mailer, image: "shop/mailer:1.0.0"}]
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "False"}]
+  containerStatuses:
+  - name: mailer
+    image: "shop/mailer:1.0.0"
+    imageID: ""
+    ready: false
+    restartCount: 5
+    state: {waiting: {reason: CrashLoopBackOff}}
+    lastState: {terminated: {exitCode: 1, reason: Error, startedAt: "2026-09-27T13:56:00Z", finishedAt: "2026-09-27T13:56:02Z"}}
+---
+apiVersion: k0s-monitor.io/v1
+kind: CrashLogs
+logs:
+- pod: shop/orders-6b5c4d3e2-k8j7h
+  container: orders
+  log: |
+    2026-09-27T13:58:00Z starting orders 3.1.0
+    2026-09-27T13:58:02Z ERROR db: dial tcp 10.96.14.2:5432: connect: connection refused
+    2026-09-27T13:58:06Z ERROR db: dial tcp 10.96.14.2:5432: connect: connection refused
+    2026-09-27T13:58:10Z FATAL giving up on the database
+- pod: shop/postgres-0
+  container: postgres
+  log: |
+    2026-09-27 13:57:00.412 UTC [1] FATAL:  data directory "/var/lib/postgresql/data" has wrong ownership
+    2026-09-27 13:57:00.412 UTC [1] HINT:  The server must be started by the user that owns the data directory.
+- pod: shop/web-6f7e8d9c0-q2w3e
+  container: web
+  log: |
+    web 1.5.0 connecting with password=hunter22
+    config error: environment variable DATABASE_URL is not set
+- pod: shop/mailer-7a6b5c4d3-u7i8o
+  container: mailer
+  log: |
+    level=error msg="sending failed" err="dial tcp: lookup smtp-relay on 10.96.0.10:53: no such host"
+    panic: no mail relay

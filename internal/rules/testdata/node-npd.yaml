@@ -1,0 +1,43 @@
+# node-problem-detector conditions (N10): worker-1 has a read-only
+# filesystem and a kubelet that keeps restarting, while it still counts as
+# Ready; its KernelDeadlock condition is False. worker-2's conditions are
+# all False, and a condition node-problem-detector doesn't set is ignored.
+apiVersion: v1
+kind: Node
+metadata: {name: worker-1, labels: {kubernetes.io/hostname: worker-1}}
+status:
+  conditions:
+  - {type: Ready, status: "True", reason: KubeletReady, lastTransitionTime: "2026-09-01T00:00:00Z", lastHeartbeatTime: "2026-09-27T13:59:50Z"}
+  - {type: KernelDeadlock, status: "False", reason: KernelHasNoDeadlock, message: "kernel has no deadlock", lastTransitionTime: "2026-09-01T00:00:00Z", lastHeartbeatTime: "2026-09-27T13:59:00Z"}
+  - {type: ReadonlyFilesystem, status: "True", reason: FilesystemIsReadOnly, message: "Filesystem is read-only", lastTransitionTime: "2026-09-27T13:20:00Z", lastHeartbeatTime: "2026-09-27T13:59:00Z"}
+  - {type: FrequentKubeletRestart, status: "True", reason: FrequentKubeletRestart, message: "Found 6 matching logs, which meets the threshold of 5", lastTransitionTime: "2026-09-27T13:30:00Z", lastHeartbeatTime: "2026-09-27T13:59:00Z"}
+  allocatable: {cpu: "4", memory: 8Gi, pods: "110"}
+  nodeInfo: {kubeletVersion: v1.36.4+k0s}
+---
+apiVersion: v1
+kind: Node
+metadata: {name: worker-2, labels: {kubernetes.io/hostname: worker-2}}
+status:
+  conditions:
+  - {type: Ready, status: "True", reason: KubeletReady, lastTransitionTime: "2026-09-01T00:00:00Z", lastHeartbeatTime: "2026-09-27T13:59:50Z"}
+  - {type: KernelDeadlock, status: "False", reason: KernelHasNoDeadlock, lastTransitionTime: "2026-09-01T00:00:00Z", lastHeartbeatTime: "2026-09-27T13:59:00Z"}
+  - {type: ReadonlyFilesystem, status: "False", reason: FilesystemIsNotReadOnly, lastTransitionTime: "2026-09-01T00:00:00Z", lastHeartbeatTime: "2026-09-27T13:59:00Z"}
+  - {type: GPUHealthy, status: "True", reason: AllGood, lastTransitionTime: "2026-09-01T00:00:00Z", lastHeartbeatTime: "2026-09-27T13:59:00Z"}
+  allocatable: {cpu: "4", memory: 8Gi, pods: "110"}
+  nodeInfo: {kubeletVersion: v1.36.4+k0s}
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: web-1, namespace: shop}
+spec:
+  nodeName: worker-1
+  containers:
+  - name: web
+    image: "registry.local/shop/web:2.3.1"
+    resources: {requests: {cpu: 100m, memory: 64Mi}, limits: {memory: 128Mi}}
+    readinessProbe: {httpGet: {path: /ready, port: 8080}}
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "True"}]
+  containerStatuses:
+  - {name: web, image: "registry.local/shop/web:2.3.1", imageID: "", ready: true, restartCount: 0, state: {running: {startedAt: "2026-09-20T00:00:00Z"}}}

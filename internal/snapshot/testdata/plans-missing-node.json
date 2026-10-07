@@ -1,0 +1,68 @@
+{
+  "apiVersion": "v1",
+  "items": [
+    {
+      "apiVersion": "autopilot.k0sproject.io/v1beta2",
+      "kind": "Plan",
+      "metadata": {
+        "creationTimestamp": "2026-09-28T17:51:43Z",
+        "name": "autopilot"
+      },
+      "spec": {
+        "commands": [
+          {
+            "k0supdate": {
+              "platforms": {
+                "linux-amd64": {
+                  "url": "https://updates.example.invalid/k0s"
+                },
+                "linux-arm64": {
+                  "url": "https://updates.example.invalid/k0s"
+                }
+              },
+              "targets": {
+                "workers": {
+                  "discovery": {
+                    "static": {
+                      "nodes": [
+                        "ghost"
+                      ]
+                    }
+                  },
+                  "limits": {
+                    "concurrent": 1
+                  }
+                }
+              },
+              "version": "v1.36.4+k0s.1"
+            }
+          }
+        ],
+        "id": "e2e-ghost",
+        "timestamp": "now"
+      },
+      "status": {
+        "commands": [
+          {
+            "id": 0,
+            "k0supdate": {
+              "workers": [
+                {
+                  "lastUpdatedTimestamp": "2026-09-28T17:51:43Z",
+                  "name": "ghost",
+                  "state": "SignalMissingNode"
+                }
+              ]
+            },
+            "state": "SchedulableWait"
+          }
+        ],
+        "state": "IncompleteTargets"
+      }
+    }
+  ],
+  "kind": "List",
+  "metadata": {
+    "resourceVersion": ""
+  }
+}

@@ -1,0 +1,303 @@
+# Good practices (H01–H06). In shop:
+# - api: no memory limit and no requests, no probes though a Service sends
+#   it traffic, an image without a tag, a budget that allows no disruption
+#   with its single replica.
+# - web: everything right: limits, probes, a pinned image, 2 replicas and a
+#   budget that allows one to be stopped.
+# - agent: a privileged DaemonSet container with a :latest init image.
+# - finished pods: an evicted pod of 10 days ago is listed; a job's pod and
+#   a pod that finished yesterday are not.
+# In kube-system, k0s's own coredns has no probes and is left out.
+apiVersion: v1
+kind: Node
+metadata: {name: worker-1}
+status:
+  conditions:
+  - {type: Ready, status: "True", reason: KubeletReady, lastTransitionTime: "2026-09-01T00:00:00Z", lastHeartbeatTime: "2026-09-27T13:59:50Z"}
+  allocatable: {cpu: "4", memory: 8Gi, pods: "110"}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: api, namespace: shop, annotations: {deployment.kubernetes.io/revision: "1"}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: api}}
+  template:
+    metadata: {labels: {app: api}}
+    spec: {containers: [{name: api, image: "registry.local/shop/api"}]}
+status: {replicas: 1, readyReplicas: 1, availableReplicas: 1}
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: api-5c6d7e8f9
+  namespace: shop
+  annotations: {deployment.kubernetes.io/revision: "1"}
+  ownerReferences: [{apiVersion: apps/v1, kind: Deployment, name: api, uid: d-api, controller: true}]
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: api, pod-template-hash: 5c6d7e8f9}}
+  template:
+    metadata: {labels: {app: api, pod-template-hash: 5c6d7e8f9}}
+    spec: {containers: [{name: api, image: "registry.local/shop/api"}]}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: api-5c6d7e8f9-a1b2c
+  namespace: shop
+  labels: {app: api, pod-template-hash: 5c6d7e8f9}
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: api-5c6d7e8f9, uid: rs-api, controller: true}]
+spec:
+  nodeName: worker-1
+  containers: [{name: api, image: "registry.local/shop/api"}]
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "True"}]
+  containerStatuses:
+  - {name: api, image: "registry.local/shop/api:latest", imageID: "", ready: true, restartCount: 0, state: {running: {startedAt: "2026-09-20T00:00:00Z"}}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: api, namespace: shop}
+spec:
+  selector: {app: api}
+  ports: [{port: 8080}]
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: api-a1b2c
+  namespace: shop
+  labels: {kubernetes.io/service-name: api}
+addressType: IPv4
+endpoints:
+- addresses: ["10.244.1.10"]
+  conditions: {ready: true}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: api, namespace: shop, generation: 1}
+spec:
+  minAvailable: 1
+  selector: {matchLabels: {app: api}}
+status: {observedGeneration: 1, expectedPods: 1, currentHealthy: 1, desiredHealthy: 1, disruptionsAllowed: 0}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: web, namespace: shop, annotations: {deployment.kubernetes.io/revision: "3"}}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: web}}
+  template:
+    metadata: {labels: {app: web}}
+    spec:
+      containers:
+      - name: web
+        image: "registry.local/shop/web:2.3.1"
+        resources: {requests: {cpu: 100m, memory: 128Mi}, limits: {memory: 256Mi}}
+        readinessProbe: {httpGet: {path: /ready, port: 8080}}
+status: {replicas: 2, readyReplicas: 2, availableReplicas: 2}
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: web-7d8e9f0a1
+  namespace: shop
+  annotations: {deployment.kubernetes.io/revision: "3"}
+  ownerReferences: [{apiVersion: apps/v1, kind: Deployment, name: web, uid: d-web, controller: true}]
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: web, pod-template-hash: 7d8e9f0a1}}
+  template:
+    metadata: {labels: {app: web, pod-template-hash: 7d8e9f0a1}}
+    spec: {containers: [{name: web, image: "registry.local/shop/web:2.3.1"}]}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-7d8e9f0a1-b2c3d
+  namespace: shop
+  labels: {app: web, pod-template-hash: 7d8e9f0a1}
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: web-7d8e9f0a1, uid: rs-web, controller: true}]
+spec:
+  nodeName: worker-1
+  containers:
+  - name: web
+    image: "registry.local/shop/web:2.3.1"
+    resources: {requests: {cpu: 100m, memory: 128Mi}, limits: {memory: 256Mi}}
+    readinessProbe: {httpGet: {path: /ready, port: 8080}}
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "True"}]
+  containerStatuses:
+  - {name: web, image: "registry.local/shop/web:2.3.1", imageID: "", ready: true, restartCount: 0, state: {running: {startedAt: "2026-09-20T00:00:00Z"}}}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-7d8e9f0a1-c3d4e
+  namespace: shop
+  labels: {app: web, pod-template-hash: 7d8e9f0a1}
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: web-7d8e9f0a1, uid: rs-web, controller: true}]
+spec:
+  nodeName: worker-1
+  containers:
+  - name: web
+    image: "registry.local/shop/web:2.3.1"
+    resources: {requests: {cpu: 100m, memory: 128Mi}, limits: {memory: 256Mi}}
+    readinessProbe: {httpGet: {path: /ready, port: 8080}}
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "True"}]
+  containerStatuses:
+  - {name: web, image: "registry.local/shop/web:2.3.1", imageID: "", ready: true, restartCount: 0, state: {running: {startedAt: "2026-09-20T00:00:00Z"}}}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: web, namespace: shop, generation: 2}
+spec:
+  maxUnavailable: 1
+  selector: {matchLabels: {app: web}}
+status: {observedGeneration: 2, expectedPods: 2, currentHealthy: 2, desiredHealthy: 1, disruptionsAllowed: 1}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata: {name: agent, namespace: shop}
+spec:
+  selector: {matchLabels: {app: agent}}
+  template:
+    metadata: {labels: {app: agent}}
+    spec:
+      initContainers: [{name: setup, image: "busybox:latest"}]
+      containers:
+      - name: agent
+        image: "registry.local/agent@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        securityContext: {privileged: true}
+        resources: {requests: {cpu: 50m, memory: 64Mi}, limits: {memory: 128Mi}}
+        livenessProbe: {exec: {command: ["true"]}}
+status: {desiredNumberScheduled: 1, currentNumberScheduled: 1, numberReady: 1, numberAvailable: 1}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: agent-x9y8z
+  namespace: shop
+  labels: {app: agent}
+  ownerReferences: [{apiVersion: apps/v1, kind: DaemonSet, name: agent, uid: ds-agent, controller: true}]
+spec:
+  nodeName: worker-1
+  initContainers: [{name: setup, image: "busybox:latest"}]
+  containers:
+  - name: agent
+    image: "registry.local/agent@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    securityContext: {privileged: true}
+    resources: {requests: {cpu: 50m, memory: 64Mi}, limits: {memory: 128Mi}}
+    livenessProbe: {exec: {command: ["true"]}}
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "True"}]
+  containerStatuses:
+  - {name: agent, image: "registry.local/agent", imageID: "", ready: true, restartCount: 0, state: {running: {startedAt: "2026-09-20T00:00:00Z"}}}
+---
+# Evicted 10 days ago and never removed.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-6c7d8e9f0-old11
+  namespace: shop
+  labels: {app: web-old}
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: web-6c7d8e9f0, uid: rs-web-old, controller: true}]
+spec:
+  nodeName: worker-1
+  containers: [{name: web, image: "registry.local/shop/web:2.3.0"}]
+status:
+  phase: Failed
+  reason: Evicted
+  message: "The node was low on resource: memory."
+  startTime: "2026-09-17T09:00:00Z"
+---
+# Finished yesterday: too recent to list.
+apiVersion: v1
+kind: Pod
+metadata: {name: migrate-once, namespace: shop}
+spec:
+  containers: [{name: migrate, image: "registry.local/shop/migrate:2.3.1"}]
+status:
+  phase: Succeeded
+  containerStatuses:
+  - {name: migrate, image: "registry.local/shop/migrate:2.3.1", imageID: "", ready: false, restartCount: 0, state: {terminated: {exitCode: 0, reason: Completed, finishedAt: "2026-09-26T14:00:00Z"}}}
+---
+# A job's pod goes with its job.
+apiVersion: batch/v1
+kind: Job
+metadata: {name: report-28790000, namespace: shop}
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers: [{name: report, image: "registry.local/shop/report:1.0"}]
+status: {succeeded: 1, completionTime: "2026-09-10T00:05:00Z"}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: report-28790000-q1w2e
+  namespace: shop
+  ownerReferences: [{apiVersion: batch/v1, kind: Job, name: report-28790000, uid: job-report, controller: true}]
+spec:
+  containers: [{name: report, image: "registry.local/shop/report:1.0"}]
+status:
+  phase: Succeeded
+  containerStatuses:
+  - {name: report, image: "registry.local/shop/report:1.0", imageID: "", ready: false, restartCount: 0, state: {terminated: {exitCode: 0, reason: Completed, finishedAt: "2026-09-10T00:05:00Z"}}}
+---
+# k0s's own CoreDNS: not the user's to change.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: coredns, namespace: kube-system}
+spec:
+  replicas: 1
+  selector: {matchLabels: {k8s-app: kube-dns}}
+  template:
+    metadata: {labels: {k8s-app: kube-dns}}
+    spec: {containers: [{name: coredns, image: "quay.io/k0sproject/coredns:1.14.7"}]}
+status: {replicas: 1, readyReplicas: 1, availableReplicas: 1}
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: coredns-6b7c8d9e0
+  namespace: kube-system
+  annotations: {deployment.kubernetes.io/revision: "1"}
+  ownerReferences: [{apiVersion: apps/v1, kind: Deployment, name: coredns, uid: d-coredns, controller: true}]
+spec:
+  replicas: 1
+  selector: {matchLabels: {k8s-app: kube-dns, pod-template-hash: 6b7c8d9e0}}
+  template:
+    metadata: {labels: {k8s-app: kube-dns, pod-template-hash: 6b7c8d9e0}}
+    spec: {containers: [{name: coredns, image: "quay.io/k0sproject/coredns:1.14.7"}]}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: coredns-6b7c8d9e0-k8s11
+  namespace: kube-system
+  labels: {k8s-app: kube-dns, pod-template-hash: 6b7c8d9e0}
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: coredns-6b7c8d9e0, uid: rs-coredns, controller: true}]
+spec:
+  nodeName: worker-1
+  containers: [{name: coredns, image: "quay.io/k0sproject/coredns:1.14.7"}]
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "True"}]
+  containerStatuses:
+  - {name: coredns, image: "quay.io/k0sproject/coredns:1.14.7", imageID: "", ready: true, restartCount: 0, state: {running: {startedAt: "2026-09-20T00:00:00Z"}}}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: coredns, namespace: kube-system}
+spec:
+  minAvailable: 1
+  selector: {matchLabels: {k8s-app: kube-dns}}
+status: {expectedPods: 1, currentHealthy: 1, desiredHealthy: 1, disruptionsAllowed: 0}

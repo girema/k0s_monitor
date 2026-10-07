@@ -1,0 +1,215 @@
+# cni.unhealthy: kube-router crash-loops on worker-2. A pod there can't get a
+# network (FailedCreatePodSandBox) and worker-2 reports NetworkUnavailable:
+# both fold under the network plugin.
+# konnectivity.agent-down: worker-3 has no konnectivity-agent pod.
+# kube-proxy.unhealthy: kube-proxy runs but is not ready on worker-1.
+# node.cordoned-long: worker-3 was cordoned 3 days ago (from managed fields).
+apiVersion: v1
+kind: Node
+metadata: {name: worker-1, creationTimestamp: "2026-09-01T00:00:00Z"}
+status:
+  conditions: [{type: Ready, status: "True", lastTransitionTime: "2026-09-01T00:00:00Z"}]
+---
+apiVersion: v1
+kind: Node
+metadata: {name: worker-2, creationTimestamp: "2026-09-01T00:00:00Z"}
+status:
+  conditions:
+  - {type: Ready, status: "True", lastTransitionTime: "2026-09-01T00:00:00Z"}
+  - {type: NetworkUnavailable, status: "True", reason: NoRouteCreated, message: "Node created without a route", lastTransitionTime: "2026-09-27T13:30:00Z"}
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: worker-3
+  creationTimestamp: "2026-09-01T00:00:00Z"
+  managedFields:
+  - manager: kubectl-cordon
+    operation: Update
+    apiVersion: v1
+    time: "2026-09-24T09:00:00Z"
+    fieldsType: FieldsV1
+    fieldsV1: {"f:spec": {"f:unschedulable": {}}}
+spec:
+  unschedulable: true
+  taints: [{key: node.kubernetes.io/unschedulable, effect: NoSchedule}]
+status:
+  conditions: [{type: Ready, status: "True", lastTransitionTime: "2026-09-01T00:00:00Z"}]
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata: {name: kube-router, namespace: kube-system, creationTimestamp: "2026-09-01T00:00:00Z"}
+spec:
+  selector: {matchLabels: {k8s-app: kube-router}}
+  template:
+    metadata: {labels: {k8s-app: kube-router}}
+    spec:
+      tolerations: [{operator: Exists}]
+      containers: [{name: kube-router, image: "quay.io/k0sproject/kube-router:v2.6"}]
+status: {desiredNumberScheduled: 3, currentNumberScheduled: 3, numberReady: 2, numberUnavailable: 1}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata: {name: konnectivity-agent, namespace: kube-system, creationTimestamp: "2026-09-01T00:00:00Z"}
+spec:
+  selector: {matchLabels: {k8s-app: konnectivity-agent}}
+  template:
+    metadata: {labels: {k8s-app: konnectivity-agent}}
+    spec:
+      tolerations: [{operator: Exists}]
+      containers: [{name: konnectivity-agent, image: "quay.io/k0sproject/apiserver-network-proxy-agent:v0.33"}]
+status: {desiredNumberScheduled: 3, currentNumberScheduled: 2, numberReady: 2, numberUnavailable: 1}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata: {name: kube-proxy, namespace: kube-system, creationTimestamp: "2026-09-01T00:00:00Z"}
+spec:
+  selector: {matchLabels: {k8s-app: kube-proxy}}
+  template:
+    metadata: {labels: {k8s-app: kube-proxy}}
+    spec:
+      tolerations: [{operator: Exists}]
+      containers: [{name: kube-proxy, image: "quay.io/k0sproject/kube-proxy:v1.36.4"}]
+status: {desiredNumberScheduled: 3, currentNumberScheduled: 3, numberReady: 2, numberUnavailable: 1}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-router-a
+  namespace: kube-system
+  labels: {k8s-app: kube-router}
+  ownerReferences: [{apiVersion: apps/v1, kind: DaemonSet, name: kube-router, uid: ds-kube-router, controller: true}]
+spec:
+  nodeName: worker-1
+  containers: [{name: kube-router, image: "kube-router:1"}]
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "True", lastTransitionTime: "2026-09-27T13:30:00Z"}]
+  containerStatuses: [{name: kube-router, ready: true, state: {running: {startedAt: "2026-09-27T13:00:00Z"}}}]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-router-b
+  namespace: kube-system
+  labels: {k8s-app: kube-router}
+  ownerReferences: [{apiVersion: apps/v1, kind: DaemonSet, name: kube-router, uid: ds-kube-router, controller: true}]
+spec:
+  nodeName: worker-2
+  containers: [{name: kube-router, image: "kube-router:1"}]
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "False", lastTransitionTime: "2026-09-27T13:30:00Z"}]
+  containerStatuses: [{name: kube-router, ready: false, restartCount: 9, state: {waiting: {reason: CrashLoopBackOff}}, lastState: {terminated: {reason: Error, exitCode: 1, finishedAt: "2026-09-27T13:58:00Z"}}}]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-router-c
+  namespace: kube-system
+  labels: {k8s-app: kube-router}
+  ownerReferences: [{apiVersion: apps/v1, kind: DaemonSet, name: kube-router, uid: ds-kube-router, controller: true}]
+spec:
+  nodeName: worker-3
+  containers: [{name: kube-router, image: "kube-router:1"}]
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "True", lastTransitionTime: "2026-09-27T13:30:00Z"}]
+  containerStatuses: [{name: kube-router, ready: true, state: {running: {startedAt: "2026-09-27T13:00:00Z"}}}]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: konnectivity-agent-a
+  namespace: kube-system
+  labels: {k8s-app: konnectivity-agent}
+  ownerReferences: [{apiVersion: apps/v1, kind: DaemonSet, name: konnectivity-agent, uid: ds-konnectivity-agent, controller: true}]
+spec:
+  nodeName: worker-1
+  containers: [{name: konnectivity-agent, image: "konnectivity-agent:1"}]
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "True", lastTransitionTime: "2026-09-27T13:30:00Z"}]
+  containerStatuses: [{name: konnectivity-agent, ready: true, state: {running: {startedAt: "2026-09-27T13:00:00Z"}}}]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: konnectivity-agent-b
+  namespace: kube-system
+  labels: {k8s-app: konnectivity-agent}
+  ownerReferences: [{apiVersion: apps/v1, kind: DaemonSet, name: konnectivity-agent, uid: ds-konnectivity-agent, controller: true}]
+spec:
+  nodeName: worker-2
+  containers: [{name: konnectivity-agent, image: "konnectivity-agent:1"}]
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "True", lastTransitionTime: "2026-09-27T13:30:00Z"}]
+  containerStatuses: [{name: konnectivity-agent, ready: true, state: {running: {startedAt: "2026-09-27T13:00:00Z"}}}]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-proxy-a
+  namespace: kube-system
+  labels: {k8s-app: kube-proxy}
+  ownerReferences: [{apiVersion: apps/v1, kind: DaemonSet, name: kube-proxy, uid: ds-kube-proxy, controller: true}]
+spec:
+  nodeName: worker-1
+  containers: [{name: kube-proxy, image: "kube-proxy:1"}]
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "False", lastTransitionTime: "2026-09-27T13:30:00Z"}]
+  containerStatuses: [{name: kube-proxy, ready: false, state: {running: {startedAt: "2026-09-27T13:00:00Z"}}}]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-proxy-b
+  namespace: kube-system
+  labels: {k8s-app: kube-proxy}
+  ownerReferences: [{apiVersion: apps/v1, kind: DaemonSet, name: kube-proxy, uid: ds-kube-proxy, controller: true}]
+spec:
+  nodeName: worker-2
+  containers: [{name: kube-proxy, image: "kube-proxy:1"}]
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "True", lastTransitionTime: "2026-09-27T13:30:00Z"}]
+  containerStatuses: [{name: kube-proxy, ready: true, state: {running: {startedAt: "2026-09-27T13:00:00Z"}}}]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-proxy-c
+  namespace: kube-system
+  labels: {k8s-app: kube-proxy}
+  ownerReferences: [{apiVersion: apps/v1, kind: DaemonSet, name: kube-proxy, uid: ds-kube-proxy, controller: true}]
+spec:
+  nodeName: worker-3
+  containers: [{name: kube-proxy, image: "kube-proxy:1"}]
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "True", lastTransitionTime: "2026-09-27T13:30:00Z"}]
+  containerStatuses: [{name: kube-proxy, ready: true, state: {running: {startedAt: "2026-09-27T13:00:00Z"}}}]
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: web-4b5c6d7e8f-n1, namespace: shop, creationTimestamp: "2026-09-27T13:45:00Z"}
+spec:
+  nodeName: worker-2
+  containers: [{name: web, image: "registry.local/web:2"}]
+status:
+  phase: Pending
+  conditions: [{type: PodScheduled, status: "True", lastTransitionTime: "2026-09-27T13:45:00Z"}]
+  containerStatuses:
+  - {name: web, ready: false, state: {waiting: {reason: ContainerCreating}}}
+---
+apiVersion: v1
+kind: Event
+metadata: {name: web-4b5c6d7e8f-n1.sandbox, namespace: shop}
+involvedObject: {kind: Pod, namespace: shop, name: web-4b5c6d7e8f-n1}
+type: Warning
+reason: FailedCreatePodSandBox
+message: 'Failed to create pod sandbox: rpc error: code = Unknown desc = failed to setup network for sandbox "4c1f0a": plugin type="bridge" failed (add): failed to allocate for range 0: no IP addresses available in range set'
+count: 40
+lastTimestamp: "2026-09-27T13:59:30Z"

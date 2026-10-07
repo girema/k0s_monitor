@@ -1,0 +1,18 @@
+# CoreDNS scaled to zero.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: coredns, namespace: kube-system, creationTimestamp: "2026-09-01T00:00:00Z"}
+spec:
+  replicas: 0
+  selector: {matchLabels: {k8s-app: kube-dns}}
+  template:
+    metadata: {labels: {k8s-app: kube-dns}}
+    spec: {containers: [{name: coredns, image: coredns}]}
+status: {replicas: 0}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: kube-dns, namespace: kube-system, creationTimestamp: "2026-09-01T00:00:00Z"}
+spec:
+  selector: {k8s-app: kube-dns}
+  ports: [{name: dns, port: 53, protocol: UDP}]

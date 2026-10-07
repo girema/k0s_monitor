@@ -1,0 +1,48 @@
+{
+ "apiVersion": "helm.k0sproject.io/v1beta1",
+ "items": [
+  {
+   "apiVersion": "helm.k0sproject.io/v1beta1",
+   "kind": "Chart",
+   "metadata": {
+    "annotations": {
+     "k0s.k0sproject.io/last-applied-configuration": "{\"apiVersion\":\"helm.k0sproject.io/v1beta1\",\"kind\":\"Chart\",\"metadata\":{\"finalizers\":[\"helm.k0sproject.io/uninstall-helm-release\"],\"name\":\"k0s-addon-chart-broken\",\"namespace\":\"kube-system\"},\"spec\":{\"chartName\":\"example/nothing\",\"namespace\":\"default\",\"releaseName\":\"broken\",\"repository\":{\"url\":\"https://charts.example.invalid\"},\"timeout\":\"0s\",\"values\":\"\\npassword: hunter2\\nreplicas: 2\\n\",\"version\":\"1.0.0\"}}\n",
+     "k0s.k0sproject.io/stack-checksum": "376459095e2992f59e6d1cb6e2a2827c"
+    },
+    "creationTimestamp": "2026-10-05T06:40:13Z",
+    "finalizers": [
+     "helm.k0sproject.io/uninstall-helm-release"
+    ],
+    "generation": 1,
+    "labels": {
+     "k0s.k0sproject.io/stack": "helm"
+    },
+    "name": "k0s-addon-chart-broken",
+    "namespace": "kube-system",
+    "resourceVersion": "636",
+    "uid": "4ee81055-0af1-4fba-9123-7b1a9759a41c"
+   },
+   "spec": {
+    "chartName": "example/nothing",
+    "namespace": "default",
+    "releaseName": "broken",
+    "repository": {
+     "url": "https://charts.example.invalid"
+    },
+    "timeout": "0s",
+    "values": "\npassword: hunter2\nreplicas: 2\n",
+    "version": "1.0.0"
+   },
+   "status": {
+    "error": "can't create Helm commands for chart \"k0s-addon-chart-broken\": failed to initialize repository: can't add repository: \"repo\" is not a valid chart repository or cannot be reached: Get \"https://charts.example.invalid/index.yaml\": dial tcp: lookup charts.example.invalid on 8.8.8.8:53: no such host",
+    "updated": "2026-10-05 06:45:42.722778603 +0000 UTC m=+347.928319818",
+    "valuesHash": "c251018d73749e052ccd3f1bd7664b10b14cbe54238b4f533e6a6638b619de50"
+   }
+  }
+ ],
+ "kind": "ChartList",
+ "metadata": {
+  "continue": "",
+  "resourceVersion": "806"
+ }
+}

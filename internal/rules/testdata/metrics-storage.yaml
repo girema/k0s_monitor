@@ -1,0 +1,119 @@
+# Volume usage from Prometheus.
+# shop/data-db is 93% full and grows 150 MiB/h: full in about 4.8 h
+# (pvc.fill-forecast, Critical); its usage finding folds under the forecast.
+# shop/uploads is 82% full and flat (pvc.usage, Medium).
+# logs/journal has used 91% of its inodes (pvc.usage by inodes, High).
+# pv/pvc-old-1 was released and kept (pv.released). shop/reports waits
+# for a restart to finish growing (pvc.resize-stuck).
+apiVersion: v1
+kind: Node
+metadata: {name: worker-1}
+status:
+  conditions: [{type: Ready, status: "True", lastTransitionTime: "2026-09-01T00:00:00Z"}]
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: openebs-hostpath
+  annotations: {storageclass.kubernetes.io/is-default-class: "true"}
+provisioner: openebs.io/local
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata: {name: longhorn}
+provisioner: driver.longhorn.io
+allowVolumeExpansion: true
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: data-db, namespace: shop, creationTimestamp: "2026-09-01T00:00:00Z"}
+spec: {accessModes: [ReadWriteOnce], resources: {requests: {storage: 10Gi}}}
+status: {phase: Bound, capacity: {storage: 10Gi}}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: uploads, namespace: shop, creationTimestamp: "2026-09-01T00:00:00Z"}
+spec: {storageClassName: longhorn, accessModes: [ReadWriteOnce], resources: {requests: {storage: 10Gi}}}
+status: {phase: Bound, capacity: {storage: 10Gi}}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: journal, namespace: logs, creationTimestamp: "2026-09-01T00:00:00Z"}
+spec: {storageClassName: longhorn, accessModes: [ReadWriteOnce], resources: {requests: {storage: 5Gi}}}
+status: {phase: Bound, capacity: {storage: 5Gi}}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: reports, namespace: shop, creationTimestamp: "2026-09-01T00:00:00Z"}
+spec: {storageClassName: longhorn, accessModes: [ReadWriteOnce], resources: {requests: {storage: 20Gi}}}
+status:
+  phase: Bound
+  capacity: {storage: 10Gi}
+  conditions:
+  - {type: FileSystemResizePending, status: "True", lastTransitionTime: "2026-09-27T13:30:00Z", message: "Waiting for user to (re-)start a pod to finish file system resize of volume on node."}
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata: {name: pvc-old-1}
+spec:
+  capacity: {storage: 20Gi}
+  accessModes: [ReadWriteOnce]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: longhorn
+  claimRef: {namespace: shop, name: old-data}
+status: {phase: Released}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: db-0
+  namespace: shop
+  ownerReferences: [{apiVersion: apps/v1, kind: StatefulSet, name: db, uid: s1, controller: true}]
+spec:
+  nodeName: worker-1
+  containers: [{name: db, image: "postgres:17", volumeMounts: [{name: data, mountPath: /var/lib/postgresql/data}]}]
+  volumes: [{name: data, persistentVolumeClaim: {claimName: data-db}}]
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "True", lastTransitionTime: "2026-09-20T00:00:00Z"}]
+  containerStatuses: [{name: db, ready: true, state: {running: {startedAt: "2026-09-20T00:00:00Z"}}}]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-1
+  namespace: shop
+  ownerReferences: [{apiVersion: apps/v1, kind: StatefulSet, name: web, uid: s2, controller: true}]
+spec:
+  nodeName: worker-1
+  containers: [{name: web, image: "shop/web:3", volumeMounts: [{name: up, mountPath: /srv/uploads}]}]
+  volumes: [{name: up, persistentVolumeClaim: {claimName: uploads}}]
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "True", lastTransitionTime: "2026-09-20T00:00:00Z"}]
+  containerStatuses: [{name: web, ready: true, state: {running: {startedAt: "2026-09-20T00:00:00Z"}}}]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: report-0
+  namespace: shop
+  ownerReferences: [{apiVersion: apps/v1, kind: StatefulSet, name: report, uid: s3, controller: true}]
+spec:
+  nodeName: worker-1
+  containers: [{name: report, image: "shop/report:1", volumeMounts: [{name: out, mountPath: /out}]}]
+  volumes: [{name: out, persistentVolumeClaim: {claimName: reports}}]
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "True", lastTransitionTime: "2026-09-20T00:00:00Z"}]
+  containerStatuses: [{name: report, ready: true, state: {running: {startedAt: "2026-09-20T00:00:00Z"}}}]
+---
+apiVersion: k0s-monitor.io/v1
+kind: Metrics
+have: [kubelet-volumes, node-exporter]
+volumes:
+  shop/data-db: {used: 9.3Gi, capacity: 10Gi, growthPerHour: 150Mi, growthWindow: 6h, r2: 0.97, baselinePerHour: 20Mi}
+  shop/uploads: {used: 8.2Gi, capacity: 10Gi, inodesUsed: 1000, inodes: 655360, growthPerHour: 0, r2: 1}
+  logs/journal: {used: 1Gi, capacity: 5Gi, inodesUsed: 298000, inodes: 327680}
+  # Grows by a few bytes an hour: it won't be full in any time that matters.
+  shop/reports: {used: 2Gi, capacity: 10Gi, growthPerHour: 3, growthWindow: 6h, r2: 0.9}

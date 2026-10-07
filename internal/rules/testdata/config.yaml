@@ -1,0 +1,127 @@
+# pod.config-error: shop/web can't start because its Secret lacks a key (both
+# replicas, so the Deployment outage is a symptom). billing/worker mounts a
+# ConfigMap that does not exist.
+# pod.run-error: edge/sensor-gw's image is built for amd64 only and runs on
+# an arm64 node (exec format error); it must not also count as a crash loop.
+apiVersion: v1
+kind: Node
+metadata: {name: worker-1, labels: {kubernetes.io/arch: amd64}}
+status:
+  conditions: [{type: Ready, status: "True", lastTransitionTime: "2026-09-01T00:00:00Z"}]
+  nodeInfo: {architecture: amd64}
+---
+apiVersion: v1
+kind: Node
+metadata: {name: edge-1, labels: {kubernetes.io/arch: arm64}}
+status:
+  conditions: [{type: Ready, status: "True", lastTransitionTime: "2026-09-01T00:00:00Z"}]
+  nodeInfo: {architecture: arm64}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: web, namespace: shop, creationTimestamp: "2026-09-01T00:00:00Z"}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: web}}
+  template:
+    metadata: {labels: {app: web}}
+    spec: {containers: [{name: app, image: "registry.local/web:2.0"}]}
+status:
+  replicas: 2
+  availableReplicas: 0
+  conditions:
+  - {type: Available, status: "False", reason: MinimumReplicasUnavailable, lastTransitionTime: "2026-09-27T13:40:00Z", lastUpdateTime: "2026-09-27T13:40:00Z"}
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: web-5d8f7c9b4
+  namespace: shop
+  ownerReferences: [{apiVersion: apps/v1, kind: Deployment, name: web, uid: d1, controller: true}]
+spec:
+  selector: {matchLabels: {app: web, pod-template-hash: 5d8f7c9b4}}
+  template:
+    metadata: {labels: {app: web, pod-template-hash: 5d8f7c9b4}}
+    spec: {containers: [{name: app, image: "registry.local/web:2.0"}]}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-5d8f7c9b4-a1
+  namespace: shop
+  labels: {app: web, pod-template-hash: 5d8f7c9b4}
+  creationTimestamp: "2026-09-27T13:40:00Z"
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: web-5d8f7c9b4, uid: rs1, controller: true}]
+spec:
+  nodeName: worker-1
+  containers: [{name: app, image: "registry.local/web:2.0"}]
+status:
+  phase: Pending
+  conditions: [{type: PodScheduled, status: "True", lastTransitionTime: "2026-09-27T13:40:00Z"}]
+  containerStatuses:
+  - name: app
+    image: "registry.local/web:2.0"
+    ready: false
+    state: {waiting: {reason: CreateContainerConfigError, message: "couldn't find key DB_PASSWORD in Secret shop/web-secrets"}}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-5d8f7c9b4-a2
+  namespace: shop
+  labels: {app: web, pod-template-hash: 5d8f7c9b4}
+  creationTimestamp: "2026-09-27T13:40:00Z"
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: web-5d8f7c9b4, uid: rs1, controller: true}]
+spec:
+  nodeName: worker-1
+  containers: [{name: app, image: "registry.local/web:2.0"}]
+status:
+  phase: Pending
+  containerStatuses:
+  - name: app
+    image: "registry.local/web:2.0"
+    ready: false
+    state: {waiting: {reason: CreateContainerConfigError, message: "couldn't find key DB_PASSWORD in Secret shop/web-secrets"}}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: worker-0
+  namespace: billing
+  creationTimestamp: "2026-09-27T13:30:00Z"
+  ownerReferences: [{apiVersion: apps/v1, kind: StatefulSet, name: worker, uid: s1, controller: true}]
+spec:
+  nodeName: worker-1
+  containers: [{name: worker, image: "registry.local/billing:5"}]
+status:
+  phase: Pending
+  containerStatuses:
+  - name: worker
+    ready: false
+    state: {waiting: {reason: CreateContainerConfigError, message: "configmap \"worker-config\" not found"}}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sensor-gw-7f9d8c6b5-k2
+  namespace: edge
+  labels: {app: sensor-gw, pod-template-hash: 7f9d8c6b5}
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: sensor-gw-7f9d8c6b5, uid: rs2, controller: true}]
+spec:
+  nodeName: edge-1
+  containers: [{name: gw, image: "registry.local/sensor-gw:3.1"}]
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "False", lastTransitionTime: "2026-09-27T13:20:00Z"}]
+  containerStatuses:
+  - name: gw
+    image: "registry.local/sensor-gw:3.1"
+    ready: false
+    restartCount: 6
+    state: {waiting: {reason: CrashLoopBackOff, message: "back-off 2m40s restarting failed container"}}
+    lastState:
+      terminated:
+        reason: StartError
+        exitCode: 128
+        finishedAt: "2026-09-27T13:58:00Z"
+        message: 'failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: exec: "/usr/bin/sensor-gw": exec format error: unknown'

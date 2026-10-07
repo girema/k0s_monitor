@@ -1,0 +1,37 @@
+# One of two CoreDNS pods is not ready.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: coredns, namespace: kube-system, creationTimestamp: "2026-09-01T00:00:00Z"}
+spec:
+  replicas: 2
+  selector: {matchLabels: {k8s-app: kube-dns}}
+  template:
+    metadata: {labels: {k8s-app: kube-dns}}
+    spec: {containers: [{name: coredns, image: coredns}]}
+status:
+  replicas: 2
+  availableReplicas: 1
+  conditions:
+  - {type: Available, status: "True", lastTransitionTime: "2026-09-01T00:00:00Z"}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: coredns-a
+  namespace: kube-system
+  labels: {k8s-app: kube-dns}
+spec: {nodeName: worker-1, containers: [{name: coredns, image: coredns}]}
+status: {phase: Running, conditions: [{type: Ready, status: "True"}]}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: coredns-b
+  namespace: kube-system
+  labels: {k8s-app: kube-dns}
+spec: {nodeName: worker-1, containers: [{name: coredns, image: coredns}]}
+status:
+  phase: Pending
+  conditions: [{type: Ready, status: "False"}]
+  containerStatuses:
+  - {name: coredns, image: coredns, imageID: "", ready: false, restartCount: 0, state: {waiting: {reason: ContainerCreating}}}
