@@ -1,0 +1,156 @@
+# An example product pack. Copy it, change it to describe your product, and
+# put it in the packs directory on the jump host (/etc/k0s-monitor/packs,
+# next to the configuration file; then run "sudo systemctl reload
+# k0s-monitor"), or upload it in Settings → Product packs.
+#
+# Every part is optional except apiVersion, kind and name.
+apiVersion: k0s-monitor/v1
+kind: ProductPack
+name: shop
+version: "2.3.0"
+description: Checks and advice for the Shop product.
+
+# The clusters it is for, by name; patterns like shop-* work. Leave it out
+# for every cluster.
+clusters: ["shop-*", "edge-prod"]
+
+# The k0s version the product ships. A version set for a cluster in
+# k0s-monitor or in its configuration file wins over this one; this one wins
+# over the version in an uploaded k0sctl.yaml.
+k0sVersion: v1.36.4+k0s.1
+
+# Who to contact: shown with the report for support and on problem pages.
+support:
+  name: Shop support
+  email: support@shop.example
+  phone: "+49 30 1234 5678"
+  hours: Monday to Friday, 8:00 to 18:00 CET
+  url: https://support.shop.example
+
+# Friendly names: Basic mode says "Payments service" instead of
+# payments-api, and links to its documentation. select.name and
+# select.namespace may be patterns.
+apps:
+- select: {namespace: shop, name: payments-api}
+  name: Payments service
+  description: Takes the payments of the web shop.
+  docs: https://docs.shop.example/payments
+- select: {namespace: shop, kind: StatefulSet, name: postgres}
+  name: Shop database
+
+# Words of the product, for the glossary and the explanations on the pages.
+glossary:
+- term: Payments service
+  text: The part of the Shop that takes payments by card and invoice.
+- term: storefront
+  also: [web shop]
+  text: The web site customers buy from.
+
+# Advice for built-in problems: what to do in Basic mode, the likely cause in
+# Full mode, steps that come before the built-in ones, and links. rules are
+# rule IDs (pod.crashloop) or patterns (pod.*); select limits it to the
+# problems of some apps.
+guides:
+- rules: [pod.crashloop, pod.oomkilled]
+  select: {namespace: shop, name: payments-api}
+  whatToDo: >-
+    Open the Shop admin console, go to Payments → Health and press
+    "Reconnect". If it keeps crashing, call Shop support.
+  likelyCause: The payments service stops when it can't reach the payment provider or the shop database.
+  steps:
+  - text: Check that the payment provider answers from the cluster
+    plain: This command checks the connection to the payment provider
+    command: kubectl -n shop exec deploy/payments-api -- wget -qO- https://api.payments.example/health
+  docs:
+  - title: "Runbook: the payments service crashes"
+    url: https://docs.shop.example/runbooks/payments-crash
+- rules: ["volume.*", "pvc.*"]
+  select: {namespace: shop}
+  docs:
+  - title: "Runbook: storage of the Shop"
+    url: https://docs.shop.example/runbooks/storage
+
+# Checks of the product's own. Each becomes a rule named
+# pack.<pack name>.<id>. Texts may use values like {{.Name}}; each kind
+# lists its values. Without texts, each kind has its own.
+#
+#   replicas  at least min ready replicas of the selected Deployments,
+#             StatefulSets or DaemonSets; an exact name that doesn't exist
+#             is reported too.      Values: Kind Namespace Name Ready Desired Min
+#   volume    the selected volume claims stay at or below above percent full
+#             (needs Prometheus or the kubelets' figures).
+#                                   Values: Namespace Name Used Above UsedBytes Capacity
+#   exists    an object of select.kind exists (Deployment, StatefulSet,
+#             DaemonSet, CronJob, Job, Service, Ingress,
+#             PersistentVolumeClaim, Namespace, StorageClass).
+#                                   Values: Kind Namespace Name
+#   nodes     at least min ready nodes, optionally those with select.labels.
+#                                   Values: Ready Total Min
+#   image     the selected workloads run an image whose tag matches tag
+#             (a pattern like 2.3.*); container limits it to one container.
+#                                   Values: Kind Namespace Name Container Image Tag Want
+#   query     a PromQL query; each series it returns must stay at or below
+#             above, or at or above below. unit is %, s or bytes.
+#                                   Values: Value Limit and every label
+#
+# severity is info, low, medium (the default), high or critical. category
+# is nodes, workloads, storage, network, controlplane or hygiene (a
+# suggestion, not a problem).
+checks:
+- id: payments-replicas
+  kind: replicas
+  select: {namespace: shop, kind: Deployment, name: payments-api}
+  min: 2
+  severity: high
+  plain:
+    title: The payments service runs with fewer copies than it needs
+    whatHappened: "{{.Ready}} of the {{.Min}} copies it needs are working."
+    why: With one copy, payments stop as soon as that copy restarts.
+    whatToDo: Call Shop support. Don't restart the database while this is shown.
+
+- id: db-volume
+  kind: volume
+  select: {namespace: shop, name: "data-postgres-*"}
+  above: 70
+  severity: high
+  plain:
+    title: The shop database is {{.Used}}% full
+    whatHappened: The database storage holds {{.UsedBytes}} of {{.Capacity}}, more than the {{.Above}}% the Shop allows.
+    whatToDo: Run the clean-up in the Shop admin console (Maintenance → Archive old orders), then check again tomorrow.
+
+- id: nightly-backup
+  kind: exists
+  select: {namespace: shop, kind: CronJob, name: shop-backup}
+  severity: high
+  plain:
+    title: The nightly backup of the shop isn't set up
+    whatToDo: Call Shop support today; until then, nothing is backed up.
+
+- id: shop-version
+  kind: image
+  select: {namespace: shop, name: "*"}
+  tag: "2.3.*"
+  severity: low
+
+- id: checkout-errors
+  kind: query
+  query: sum by (namespace) (rate(http_requests_total{namespace="shop", code=~"5.."}[5m]))
+  above: 1
+  severity: medium
+  title: "Checkout returns {{.Value}} errors per second"
+  plain:
+    title: Customers get errors when they pay
+    whatHappened: "The shop answers {{.Value}} requests per second with an error."
+  docs:
+  - title: "Runbook: checkout errors"
+    url: https://docs.shop.example/runbooks/checkout-errors
+
+# Replaces the built-in guide for adding a server (Servers page).
+addNode:
+  text: Servers for the Shop are added with the Shop installer, which also prepares the disks.
+  steps:
+  - text: On the new server, as root, run the Shop installer in node mode
+    command: sudo shop-installer add-node --cluster shop-prod
+  docs:
+  - title: "Shop installer: adding a server"
+    url: https://docs.shop.example/install/add-node

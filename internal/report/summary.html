@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Report for support: {{.Cluster}}</title>
+<base target="_blank">
+<style>
+:root{--bg:#f9f9f7;--card:#fcfcfb;--ink:#0b0b0b;--muted:#52514e;--line:rgba(11,11,11,.10);--code:#f3f2ef;--accent:#1c5cab;
+--p1:#d03b3b;--p2:#ec835a;--p3:#fab219;--p4:#eceae5}
+@media (prefers-color-scheme:dark){:root{--bg:#0d0d0d;--card:#1a1a19;--ink:#fff;--muted:#c3c2b7;--line:rgba(255,255,255,.10);--code:#121211;--accent:#86b6ef;--p4:#242422}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:1040px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:24px;margin:0 0 4px}h2{font-size:18px;margin:32px 0 10px}h3{font-size:16px;margin:0}
+.sub{color:var(--muted);margin:0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin:12px 0}
+table{border-collapse:collapse;width:100%}
+td,th{text-align:left;vertical-align:top;padding:4px 12px 4px 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
+th{color:var(--muted);font-weight:600;white-space:nowrap;width:1%}
+tr:last-child td,tr:last-child th{border-bottom:0}
+code,pre{font:13px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace;background:var(--code);border-radius:6px}
+code{padding:1px 5px;overflow-wrap:anywhere}
+pre{padding:10px 12px;margin:6px 0 0;overflow-x:auto;white-space:pre-wrap;word-break:break-word}
+@media (max-width:600px){th{white-space:normal;width:30%}main{padding:16px 12px 32px}}
+a{color:var(--accent)}
+.chip{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:1px 9px;margin-right:8px;white-space:nowrap}
+.p1{background:var(--p1);color:#fff}.p2{background:var(--p2);color:#0b0b0b}.p3{background:var(--p3);color:#0b0b0b}.p4{background:var(--p4);color:var(--muted);box-shadow:inset 0 0 0 1px var(--line)}
+.head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 0}
+.muted{color:var(--muted)}.small{font-size:13px}
+.counts{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.counts>span{border:1px solid var(--line);border-radius:8px;padding:4px 10px;background:var(--card)}
+ol,ul{margin:6px 0;padding-left:22px}li{margin:4px 0}
+.note{border-left:3px solid var(--line);padding-left:10px;color:var(--muted)}
+</style>
+</head>
+<body>
+<main>
+<h1>Report for support: {{.Cluster}}</h1>
+<p class="sub">Made by k0s-monitor {{.Tool}} on {{.Host}} at {{.Created}}.
+{{if .MaskIPs}}IP addresses are replaced by names (ip-1, ip-2, …); the same address has the same name everywhere.{{end}}</p>
+{{with .Support}}<p><b>Support:</b> {{.}}</p>{{end}}
+<p class="note small">Secrets are not in this report: no Secret values were read, and values that look like passwords, tokens or keys are shown as ••••••.</p>
+
+<h2>Cluster</h2>
+<div class="card"><table>
+<tr><th>Connection</th><td>{{.Status}}{{with .Problem}}<br><span class="muted">{{.}}</span>{{end}}</td></tr>
+{{with .Server}}<tr><th>API server</th><td><code>{{.}}</code></td></tr>{{end}}
+{{with .Kubernetes}}<tr><th>Kubernetes</th><td>{{.}}</td></tr>{{end}}
+{{with .K0s}}<tr><th>Expected k0s</th><td>{{.}}</td></tr>{{end}}
+<tr><th>Size</th><td>{{plural .Nodes "node"}}, {{plural .Pods "pod"}}</td></tr>
+{{with .Health}}<tr><th>Health</th><td>{{.Score}}/100, {{.Label}}{{with $.HealthAt}} <span class="muted">(as of {{.}})</span>{{end}}</td></tr>{{end}}
+{{with .Metrics}}<tr><th>Metrics</th><td>{{.}}</td></tr>{{end}}
+{{with .Packs}}<tr><th>Product packs</th><td>{{range $i, $p := .}}{{if $i}}, {{end}}{{$p}}{{end}}</td></tr>{{end}}
+{{range .Unreadable}}<tr><th>Can't read</th><td>{{.Key}}: {{.Value}}</td></tr>{{end}}
+{{range .Skipped}}<tr><th>Rules skipped</th><td>{{.Value}}: <span class="small"><code>{{.Key}}</code></span></td></tr>{{end}}
+{{range .Warnings}}<tr><th>Warning</th><td>{{.}}</td></tr>{{end}}
+</table>
+<div class="counts">{{range .Counts}}<span><span class="chip {{prio .Priority}}">{{.Priority}}</span>{{.Label}}: <b>{{.N}}</b></span>{{end}}</div>
+</div>
+
+<h2>Problems ({{len .Problems}})</h2>
+{{if not .Problems}}<p class="muted">k0s-monitor found no problems.</p>{{end}}
+{{range .Problems}}
+<div class="card" id="f-{{.ID}}">
+<div class="head"><span class="chip {{prio .Priority}}">{{.Priority}} · {{.Priority.PlainLabel}}</span><h3>{{.Title}}</h3></div>
+<p class="muted small">In plain words: {{.Plain.Title}}{{with .Since}} · since {{utc .}}{{end}}{{with .FirstSeen}} · first seen {{utc .}}{{end}} · rule <code>{{.RuleID}}</code>{{if eq .State "acknowledged"}} · acknowledged{{with .StateBy}} by {{.}}{{end}}{{end}}{{if eq .State "snoozed"}} · snoozed{{end}}</p>
+<p>{{.Summary}}</p>
+<table>
+<tr><th>Object</th><td><code>{{.Resource}}</code>{{with .App}} ({{.}}){{end}}</td></tr>
+{{range .Evidence}}<tr><th>{{.Label}}</th><td>{{range $i, $l := lines .Value}}{{if $i}}<br>{{end}}{{$l}}{{end}}</td></tr>{{end}}
+{{with .Remedy.LikelyCause}}<tr><th>Likely cause</th><td>{{.}}</td></tr>{{end}}
+{{with .Alerts}}<tr><th>Prometheus alerts</th><td>{{range $i, $a := .}}{{if $i}}<br>{{end}}<code>{{$a.Name}}</code>{{with $a.Severity}} ({{.}}){{end}}{{with $a.Summary}}: {{.}}{{end}}{{end}}</td></tr>{{end}}
+{{with .Rollout}}<tr><th>Started with</th><td>update of {{.Workload}} to revision {{.Revision}} at {{.At.UTC.Format "2006-01-02 15:04 UTC"}}{{range .Changes}}<br><span class="muted">{{with .Container}}{{.}}: {{end}}{{.What}}: {{or .Old "—"}} → {{or .New "—"}}</span>{{end}}</td></tr>{{end}}
+</table>
+{{with .Remedy.Steps}}<p><b>What to do</b></p><ol>{{range .}}<li>{{.Text}}{{with .Host}} <span class="muted">(on {{.}})</span>{{end}}{{with .Command}}<pre>{{.}}</pre>{{end}}</li>{{end}}</ol>{{end}}
+{{with .Docs}}<p><b>Documentation</b></p><ul>{{range .}}<li><a href="{{.URL}}">{{.Title}}</a></li>{{end}}</ul>{{end}}
+{{with .Symptoms}}<p><b>Also affected ({{len .}})</b></p><ul>{{range .}}<li>{{.Title}} <span class="muted small"><code>{{.Resource}}</code></span></li>{{end}}</ul>{{end}}
+{{with .Files}}<p class="small"><b>Files:</b> {{range $i, $f := .}}{{if $i}} · {{end}}<a href="{{$f}}">{{$f}}</a>{{end}}</p>{{end}}
+</div>
+{{end}}
+
+{{if .AlertsRead}}
+<h2>Alerts from Prometheus ({{len .Alerts}})</h2>
+{{if not .Alerts}}<p class="muted">No alerts fire.</p>{{else}}<div class="card"><table>
+{{range $a := .Alerts}}<tr><th><code>{{.Name}}</code>{{with .Severity}}<br><span class="muted small">{{.}}</span>{{end}}</th><td>{{with .Summary}}{{.}}<br>{{end}}<span class="muted small">{{with .About.Name}}<code>{{$a.About}}</code>{{end}}{{with .Since}} · since {{utc .}}{{end}}</span>{{with .Problems}}<br><span class="small">About: {{range $i, $p := .}}{{if $i}}; {{end}}{{$p}}{{end}}</span>{{else}}<br><span class="small muted">No problem found about this.</span>{{end}}</td></tr>{{end}}
+</table></div>{{end}}
+{{end}}
+
+{{with .Suggestions}}
+<h2>Suggestions ({{len .}})</h2>
+<div class="card"><ul>{{range .}}<li><b>{{.Title}}</b> <span class="muted small"><code>{{.Resource}}</code></span><br><span class="small">{{.Summary}}</span></li>{{end}}</ul></div>
+{{end}}
+
+{{with .Missing}}
+<h2>What couldn't be gathered</h2>
+<div class="card"><ul class="small">{{range .}}<li>{{.}}</li>{{end}}</ul></div>
+{{end}}
+
+<h2>Files</h2>
+<div class="card"><table>
+<tr><th><a href="README.txt">README.txt</a></th><td class="small">What this report is and how secrets were hidden</td></tr>
+{{range .Files}}<tr><th><a href="{{.Path}}">{{.Path}}</a></th><td class="small">{{.About}} <span class="muted">· {{size .Size}}</span></td></tr>{{end}}
+</table></div>
+</main>
+</body>
+</html>
