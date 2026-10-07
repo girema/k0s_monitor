@@ -1,0 +1,90 @@
+{{define "content"}}{{$d := .Data}}{{$st := $d.State}}{{$c := .Cluster.Name}}{{$basic := .Basic}}
+<div class="page-head">
+  <div>
+    <h1>{{if $basic}}{{$c}}{{else}}Cluster overview{{end}}</h1>
+    <div class="sub">{{if $basic}}{{if $st.LastSync}}Checked {{agoPlain $st.LastSync}}. Checks run again automatically.{{else}}Not checked yet.{{end}}{{else}}{{$c}}{{with $st.Info}} · {{.Version}} · {{plural .Nodes "node"}} · {{plural .Pods "pod"}}{{end}}{{if $st.LastSync}} · last evaluation {{stamp $st.LastSync}}{{end}}{{end}}</div>
+  </div>
+</div>
+
+{{if eq $st.Status "unreachable"}}<div class="notice bad"><i class="ic crit">✕</i><div><b>{{if $basic}}This cluster can't be reached right now.{{else}}Unreachable{{with $st.UnreachableSince}} since {{stamp .}}{{end}}.{{end}}</b> {{errorText $st.Error}}<div class="small muted mt8">{{if $st.LastSync}}What you see below is the last known state, from {{agoPlain $st.LastSync}}.{{end}} {{if $st.RetryAt}}Next try at {{stamp $st.RetryAt}}.{{end}} <button class="btn sm" type="button" data-post="/api/v1/clusters/{{$c}}/retry">Try again now</button></div></div></div>{{end}}
+{{template "fallback" (dict "st" $st "basic" $basic)}}
+{{range $st.Warnings}}<div class="notice warn"><i class="ic warn">▲</i><span>{{.}}</span></div>{{end}}
+
+{{if $basic}}
+<div class="bhero">
+  <i class="ic {{$d.HeroIcon}} big-ic" aria-hidden="true">{{if eq $d.HeroIcon "good"}}✓{{else if eq $d.HeroIcon "info"}}…{{else}}!{{end}}</i>
+  <div><h2>{{$d.Headline}}</h2><p>{{$d.Sentence}}</p></div>
+  {{if $d.Items}}<a class="btn primary" href="/c/{{$c}}/problems">Show me what to fix</a>{{end}}
+</div>
+<div class="grid">
+  <div class="card s8">
+    <div class="card-head"><h2>Fix these first</h2><span class="sub">most urgent at the top</span></div>
+    {{range $i, $it := $d.Top}}
+    <div class="bitem{{if eq $i 0}} first{{end}}">{{template "urgchip" .Priority}}
+      <div><div class="bt">{{.Plain.Title}} {{template "tags" (dict "f" .Finding "basic" true)}}</div><div class="bw">{{.Plain.WhatHappened}}</div>{{template "also" (dict "f" .Finding "children" .Children)}}</div>
+      <a class="btn" href="/c/{{$c}}/problems/{{.ID}}">How to fix</a></div>
+    {{else}}
+    <div class="empty">{{if $d.Quiet}}<h2>Nothing else to fix</h2><p>{{plural $d.Quiet "problem"}} set aside {{if eq $d.Quiet 1}}is{{else}}are{{end}} hidden: someone is on {{if eq $d.Quiet 1}}it{{else}}them{{end}}, or asked to be reminded later. <a href="/c/{{$c}}/problems?show=all">See {{if eq $d.Quiet 1}}it{{else}}them{{end}}</a>.</p>{{else}}<h2>Nothing to fix</h2><p>Everything we checked is working.</p>{{end}}</div>
+    {{end}}
+    {{if gt (len $d.Items) (len $d.Top)}}<div class="mt12"><a href="/c/{{$c}}/problems">See all {{len $d.Items}} problems →</a></div>{{end}}
+  </div>
+  <div class="card s4">
+    <div class="card-head"><h2>What we checked</h2></div>
+    <ul class="checks">
+      {{range $d.Checks}}<li><i class="ic {{.Icon}}" aria-hidden="true">{{.Mark}}</i><span><b>{{if .Link}}<a href="{{.Link}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}:</b> {{.Text}}</span></li>{{end}}
+    </ul>
+    <div class="small muted mt16">{{if $st.LastSync}}Checked {{agoPlain $st.LastSync}}. {{end}}Checks run again automatically when something changes.</div>
+    <div class="small mt8">Want every detail? Switch to <a href="?mode=full">Full mode</a>.</div>
+  </div>
+</div>
+{{else}}
+<div class="grid">
+  <div class="card s4">
+    <div class="card-head"><h2>Cluster health</h2>{{with $st.Health}}<span class="end"><span class="st small sec"><i class="ic {{healthCls .Score}}">{{healthIc .Score}}</i>{{.Label}}</span></span>{{end}}</div>
+    {{with $st.Health}}
+    <div class="hero"><span class="big">{{.Score}}</span><span class="of">/ 100</span></div>
+    {{if eq $st.Status "unreachable"}}<div class="small sec mt8">Last known score, computed {{stamp $st.HealthAt}}.</div>{{end}}
+    <div class="cat-list">
+      {{range .Categories}}<div class="mrow"><span class="name">{{cat .Category false}}</span>{{template "meter" (dict "v" .Score "cls" (healthCls .Score))}}<span class="v">{{.Score}}</span><span class="lbl">{{.Label}}</span></div>{{end}}
+    </div>
+    <details class="tv"><summary>How the score is computed</summary>
+      <div class="mt8">Each category starts at 100. It loses 30 points per open P1 root cause, 12 per P2, 4 per P3 and 1 per P4, plus 2 per folded symptom. The overall score is a weighted average: nodes and workloads 25% each, storage 20%, network and control plane 15% each. 90 and above is Healthy, 70–89 Warning, 50–69 Degraded, below 50 Critical.</div>
+    </details>
+    {{else}}<div class="muted">Computed after the first evaluation.</div>{{end}}
+    <div class="small muted mt16 mb12">Data sources</div>
+    <ul class="cond">
+      {{range $d.Sources}}<li><i class="ic {{.Icon}}">{{.Mark}}</i>{{.Name}}<span class="since">{{.Text}}</span></li>{{end}}
+    </ul>
+    {{with $st.Skipped}}<details class="tv"><summary>{{plural (len .) "check"}} skipped</summary><ul class="small">{{range .}}<li><code>{{.RuleID}}</code>: {{.Reason}}</li>{{end}}</ul></details>{{end}}
+  </div>
+
+  <div class="card s8">
+    <div class="card-head"><h2>Fix first</h2><span class="sub">Root causes, highest priority first. Symptoms are folded in.</span><span class="end"><a href="/c/{{$c}}/problems">All {{len $d.Items}} issues →</a></span></div>
+    <div class="tiles">
+      <div class="tile"><div class="lab"><span class="pri p1">P1</span>Fix now</div><div class="val">{{count $d.PCounts "P1"}}</div></div>
+      <div class="tile"><div class="lab"><span class="pri p2">P2</span>Fix today</div><div class="val">{{count $d.PCounts "P2"}}</div></div>
+      <div class="tile"><div class="lab"><span class="pri p3">P3</span>Plan</div><div class="val">{{count $d.PCounts "P3"}}</div></div>
+      <div class="tile"><div class="lab"><span class="pri p4">P4</span>Hygiene</div><div class="val">{{count $d.PCounts "P4"}}</div></div>
+    </div>
+    <div class="fix-list">
+      {{range $i, $it := $d.Top}}
+      <div class="fix{{if eq $i 0}} first{{end}}">
+        <div class="pcol">{{template "prichip" .Priority}}<span class="score">{{.Score}}</span></div>
+        <div><div class="title">{{.Title}}</div><div class="why">{{.Summary}}</div>
+          <div class="meta"><span class="tag">{{cat .Category false}}</span><span class="tag mono" title="{{ref .Resource}}">{{ref .Resource}}</span>{{if .Children}}<span class="tag">+{{plural (len .Children) "symptom"}}</span>{{end}}{{template "tags" (dict "f" .Finding "basic" false)}}</div></div>
+        <a class="btn" href="/c/{{$c}}/problems/{{.ID}}">Resolve</a>
+      </div>
+      {{else}}<div class="empty">No open issues.{{if $d.Quiet}} {{$d.Quiet}} acknowledged or snoozed.{{end}}</div>{{end}}
+    </div>
+  </div>
+
+  <div class="card s12">
+    <div class="card-head"><h2>Nodes</h2><span class="sub">registered in Kubernetes. k0s controllers without a kubelet are not listed.</span></div>
+    {{if $d.Nodes}}<div class="tbl-wrap"><table class="t">
+      <thead><tr><th>Node</th><th>Status</th><th>Roles</th><th>Kubelet</th><th class="r">Pods</th><th>Problems</th></tr></thead>
+      <tbody>{{range $d.Nodes}}<tr><td class="res">{{.Name}}</td><td><span class="st"><i class="ic {{.Icon}}">{{if eq .Icon "good"}}✓{{else if eq .Icon "crit"}}✕{{else}}▲{{end}}</i>{{.Status}}</span></td><td>{{.Roles}}</td><td class="mono small">{{.Version}}</td><td class="r">{{.Pods}}</td><td class="small">{{join .Problems "; "}}</td></tr>{{end}}</tbody>
+    </table></div>{{else}}<div class="muted">No nodes are known yet.</div>{{end}}
+  </div>
+</div>
+{{end}}
+{{end}}

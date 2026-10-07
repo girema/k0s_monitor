@@ -1,0 +1,112 @@
+{{define "content"}}{{$d := .Data}}{{$st := $d.State}}{{$c := .Cluster.Name}}{{$basic := .Basic}}
+<div class="page-head"><div><h1>{{if $basic}}Connection{{else}}Connection &amp; settings{{end}}</h1><div class="sub">{{$c}}</div></div></div>
+<div class="grid">
+  <div class="card s8">
+    <div class="card-head"><h2>Connection</h2></div>
+    <dl class="kv2">
+      <dt>Status</dt><dd>{{$st.Status}}{{with $st.UnreachableSince}} since {{stamp .}}{{end}}</dd>
+      {{with $st.Error}}<dt>Problem</dt><dd>{{.Plain}} {{.Hint}}</dd>{{end}}
+      {{with $st.Info}}<dt>API server</dt><dd><span class="mono">{{.Server}}</span>{{with .Fallback}}<div class="small sec">controller {{.Controller}}, used because the kubeconfig's server <span class="mono">{{.Server}}</span> doesn't answer{{with .Error}}: {{clause .Plain}}{{end}}</div>{{end}}</dd><dt>Version</dt><dd>{{.Version}}{{if .K0s}} (k0s){{end}}</dd>
+      {{if .Unreadable}}<dt>Can't read</dt><dd>{{range $k, $v := .Unreadable}}<code>{{$k}}</code> ({{$v}}) {{end}}</dd>{{end}}{{end}}
+      {{with $d.Server}}<dt>Server override</dt><dd class="mono">{{.}}</dd>{{end}}
+      {{if $d.FromUI}}<dt>Account</dt><dd id="account">{{if $d.Account.Uploaded}}<span class="st"><i class="ic warn" aria-hidden="true">▲</i>the credentials uploaded with the cluster</span>{{else}}k0s-monitor's own read-only account{{end}}</dd>{{end}}
+      {{with $d.Context}}<dt>Context</dt><dd>{{.}}</dd>{{end}}
+      <dt>Last evaluation</dt><dd>{{if $st.LastSync}}{{stamp $st.LastSync}}{{else}}never{{end}}</dd>
+      <dt>Added</dt><dd>{{if $d.FromUI}}in the UI (credentials stored encrypted){{else}}from the configuration file{{end}}</dd>
+    </dl>
+    {{with $st.Info}}{{with .Prometheus}}
+    <h3 class="muted small mt16">METRICS (PROMETHEUS OR VICTORIAMETRICS)</h3>
+    <dl class="kv2">
+      <dt>State</dt><dd>{{if eq .State "ok"}}<span class="st"><i class="ic good">✓</i>reading</span>{{else if eq .State "disabled"}}turned off{{else}}<span class="st"><i class="ic warn">▲</i>{{if eq .State "not-found"}}not found{{else if eq .State "forbidden"}}no access{{else}}can't be read{{end}}</span>{{end}}</dd>
+      {{with .Target}}<dt>Read from</dt><dd class="mono">{{.}}</dd>{{end}}
+      {{with .Message}}<dt>{{if eq $st.Info.Prometheus.State "ok"}}Data{{else}}Why{{end}}</dt><dd>{{.}}</dd>{{end}}
+      {{with .Unmapped}}<dt>Not matched to a node</dt><dd class="mono">{{join . ", "}}</dd>{{end}}
+    </dl>
+    {{if .Hint}}{{if eq .State "forbidden"}}<p class="small sec mt8">To let k0s-monitor's read-only account read it, run these commands with admin rights. The next check (within 5 minutes) picks it up.</p>
+    <div class="cmd multi"><span>{{.Hint}}</span><button type="button" data-copy="{{.Hint}}">Copy</button></div>{{else}}<p class="small sec mt8">{{.Hint}}</p>{{end}}{{end}}
+    {{if .Fallbacks}}<p class="small sec mt8">Instead of Prometheus: {{join .Fallbacks "; "}}.</p>{{end}}
+    {{with .FallbackHint}}<p class="small sec mt8">Without Prometheus or VictoriaMetrics, volume usage can come from the kubelets. That needs read access to the kubelet API (get nodes/proxy), which is powerful, so the read-only account doesn't have it. To allow it, run these commands with admin rights:</p>
+    <div class="cmd multi"><span>{{.}}</span><button type="button" data-copy="{{.}}">Copy</button></div>{{end}}
+    {{end}}{{end}}
+    {{with $d.Account}}{{with .Notice}}<div class="notice {{if $d.Account.OK}}good{{else}}bad{{end}} mt12"><i class="ic {{if $d.Account.OK}}good{{else}}crit{{end}}" aria-hidden="true">{{if $d.Account.OK}}✓{{else}}!{{end}}</i><span>{{.}}</span></div>{{end}}
+    {{if .Uploaded}}<div class="notice warn mt12"><i class="ic warn" aria-hidden="true">▲</i><div>{{if $basic}}k0s-monitor uses the access you uploaded, which may be allowed to change the cluster. If this machine were taken over, the cluster could be changed too.{{else}}k0s-monitor uses the credentials uploaded with this cluster. They are stored encrypted, but the key is on this machine too: if it is taken over, so are they, and an admin kubeconfig can change anything in the cluster.{{end}}
+      <form method="post" action="/c/{{$c}}/settings/account#account" class="mt8" data-confirm-submit="Create k0s-monitor's read-only account in {{$c}} and delete the uploaded credentials from this machine?">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}">
+        <label class="check-line mb12"><input type="checkbox" name="tlsSecrets" checked><span>Also let it read Secrets: to warn before apps' certificates expire, and for the Secrets pages</span></label>
+        <button class="btn primary" type="submit">{{if $basic}}Switch to read-only access{{else}}Switch to the read-only account{{end}}</button>
+        <span class="small sec">The uploaded credentials create it once, as when adding a cluster, and are then deleted.</span>
+      </form></div></div>{{end}}{{end}}
+    <div class="btnrow mt16"><button class="btn" type="button" data-post="/api/v1/clusters/{{$c}}/retry">Check the connection now</button></div>
+  </div>
+  <div class="card s4">
+    <div class="card-head"><h2>Remove</h2></div>
+    {{if $d.FromUI}}
+    <p class="small sec">Stops monitoring {{$c}} and deletes its stored credentials, history and notifications. Nothing changes in the cluster.</p>
+    <button class="btn danger" type="button" data-delete="/api/v1/clusters/{{$c}}" data-confirm="Remove {{$c}} from k0s-monitor? Nothing changes in the cluster." data-then="/">Remove {{$c}}</button>
+    {{with $d.RemoveCommands}}<p class="small sec mt16">k0s-monitor's read-only account stays in the cluster. To remove it too, run:</p>
+    <div class="cmd multi"><span>{{.}}</span><button type="button" data-copy="{{.}}">Copy</button></div>{{end}}
+    {{else}}<p class="small sec">This cluster is listed in the configuration file. Remove it there and restart the service.</p>{{end}}
+  </div>
+  <div class="card s8" id="metrics">
+    <div class="card-head"><h2>{{if $basic}}Where the measurements come from{{else}}Metrics source{{end}}</h2><span class="sub">Prometheus or VictoriaMetrics: disk, volume and VM checks need one</span></div>
+    {{with $d.Metrics}}
+    {{with .Notice}}<div class="notice {{if $d.Metrics.NoticeOK}}good{{else}}warn{{end}}"><i class="ic {{if $d.Metrics.NoticeOK}}good{{else}}warn{{end}}" aria-hidden="true">{{if $d.Metrics.NoticeOK}}✓{{else}}▲{{end}}</i><span>{{.}}</span></div>
+    {{with $d.Metrics.Test}}{{if eq .State "forbidden"}}<p class="small sec">To let k0s-monitor's read-only account read it, run these commands with admin rights, then test again:</p><div class="cmd multi"><span>{{.Hint}}</span><button type="button" data-copy="{{.Hint}}">Copy</button></div>{{end}}{{end}}{{end}}
+    {{if .Editable}}
+    <form method="post" action="/c/{{$c}}/settings/metrics#metrics">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <label class="radio"><input type="radio" name="mode" value="auto"{{if eq .Mode "auto"}} checked{{end}}>
+        <div><b>Find it in the cluster</b><div class="small sec mt8">A Prometheus or VictoriaMetrics running in the cluster as a Service, read through the API server, so only port 6443 is needed.</div></div></label>
+      <label class="radio"><input type="radio" name="mode" value="url"{{if eq .Mode "url"}} checked{{end}}>
+        <div class="grow"><b>At an address</b><div class="small sec mt8">For one outside Kubernetes, for example on the controller host. This machine connects to it directly, so the port must be open to it. VictoriaMetrics listens on 8428 by default, Prometheus on 9090; for a VictoriaMetrics cluster, add the vmselect path (…:8481/select/0/prometheus).</div>
+        <input class="input mt8" type="url" name="url" value="{{.URL}}" placeholder="http://{{or .Host "10.0.0.5"}}:8428" aria-label="Address of Prometheus or VictoriaMetrics"></div></label>
+      <label class="radio"><input type="radio" name="mode" value="service"{{if eq .Mode "service"}} checked{{end}}>
+        <div class="grow"><b>A Service in the cluster</b><div class="small sec mt8">When it isn't found by itself. As namespace/name:port, with a path if it needs one.</div>
+        <input class="input mt8" name="service" value="{{.Service}}" placeholder="monitoring/prometheus-k8s:9090" aria-label="Service as namespace/name:port"></div></label>
+      <label class="radio"><input type="radio" name="mode" value="off"{{if eq .Mode "off"}} checked{{end}}>
+        <div><b>Off</b><div class="small sec mt8">No disk, volume or VM checks for this cluster.</div></div></label>
+      <div class="btnrow mt12"><button class="btn" type="submit" name="action" value="test">Test</button><button class="btn primary" type="submit" name="action" value="save">Save</button></div>
+    </form>
+    {{else}}
+    <p class="small sec">{{if eq .Mode "auto"}}Found automatically in the cluster{{else if eq .Mode "off"}}Turned off{{else if eq .Mode "url"}}Read from <code>{{.URL}}</code>{{else}}Read from the Service <code>{{.Service}}</code>{{end}}. This cluster comes from the configuration file: to change it, set <code>prometheus</code> for the cluster there (<code>url</code>, <code>service</code> or <code>disabled</code>) and restart the service.</p>
+    {{end}}
+    {{end}}
+  </div>
+  <div class="card s8" id="tls">
+    <div class="card-head"><h2>{{if $basic}}Security certificates of apps{{else}}Secrets{{end}}</h2><span class="sub">{{if $basic}}to warn before they expire{{else}}what the certificate check (X09) and the Secrets pages read{{end}}</span></div>
+    {{with $d.TLS}}
+    {{with .Notice}}<div class="notice {{if $d.TLS.NoticeOK}}good{{else}}warn{{end}}"><i class="ic {{if $d.TLS.NoticeOK}}good{{else}}warn{{end}}" aria-hidden="true">{{if $d.TLS.NoticeOK}}✓{{else}}▲{{end}}</i><span>{{.}}</span></div>{{end}}
+    <dl class="kv2"><dt>State</dt><dd>{{if eq .State "ok"}}<span class="st"><i class="ic good" aria-hidden="true">✓</i>reading {{plural .Certs "certificate"}}</span>{{if not $basic}} · <a href="/c/{{$c}}/secrets">open the Secrets</a>{{end}}{{else if eq .State "off"}}turned off{{else if eq .State "not allowed"}}<span class="st"><i class="ic warn" aria-hidden="true">▲</i>not allowed{{if .Uploaded}} with the uploaded credentials{{end}}</span>{{else if .State}}<span class="st"><i class="ic warn" aria-hidden="true">▲</i>{{.State}}</span>{{else}}not checked yet{{end}}</dd></dl>
+    <p class="small sec mt8">Kubernetes can't limit access to TLS Secrets alone: an account that may read them may read every Secret, including passwords. k0s-monitor watches only TLS Secrets, keeps only their certificate (names, issuer and dates) and drops the private key as it arrives. It reads another Secret only when someone opens it on the Secrets pages, and shows values only if that is turned on in <a href="/settings#secrets">Settings</a>: one at a time, each recorded in the audit log.</p>
+    {{with .Commands}}<p class="small sec mt8">To allow it for k0s-monitor's read-only account, run these commands with admin rights. The next check (within 5 minutes) picks it up.</p>
+    <div class="cmd multi"><span>{{.}}</span><button type="button" data-copy="{{.}}">Copy</button></div>{{end}}
+    {{if .Editable}}
+    <form method="post" action="/c/{{$c}}/settings/tls#tls" class="btnrow mt12">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <input type="hidden" name="on" value="{{if .On}}0{{else}}1{{end}}">
+      <button class="btn" type="submit">{{if .On}}Stop reading Secrets{{else}}Read Secrets again{{end}}</button>
+    </form>
+    {{else}}
+    <p class="small sec mt8">This cluster comes from the configuration file: set <code>readTLSSecrets: false</code> for it there to stop reading them.</p>
+    {{end}}
+    {{end}}
+  </div>
+  <div class="card s8" id="k0s">
+    <div class="card-head"><h2>{{if $basic}}Cluster software version{{else}}k0s version{{end}}</h2><span class="sub">{{if $basic}}the version every server should run{{else}}what the version check (C10) compares every node with{{end}}</span></div>
+    {{with $d.K0s}}
+    {{with .Notice}}<div class="notice {{if $d.K0s.NoticeOK}}good{{else}}warn{{end}}"><i class="ic {{if $d.K0s.NoticeOK}}good{{else}}warn{{end}}" aria-hidden="true">{{if $d.K0s.NoticeOK}}✓{{else}}▲{{end}}</i><span>{{.}}</span></div>{{end}}
+    <p class="small sec">{{if .Version}}Expected: <b class="mono">{{.Version}}</b> ({{.From}}).{{else}}Nothing set: the version most controllers run is expected{{with .Running}}, now <span class="mono">{{.}}</span>{{end}}.{{end}} Your product ships a k0s version; set it here when it isn't in an uploaded k0sctl.yaml, so a cluster that runs another is noticed.</p>
+    {{if .Editable}}
+    <form method="post" action="/c/{{$c}}/settings/k0s#k0s" class="btnrow mt12">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <input class="input mono" name="version" value="{{.Version}}" placeholder="{{or .Running "v1.36.4+k0s.1"}}" aria-label="k0s version" pattern="v?[0-9]+\.[0-9]+\.[0-9]+(\+k0s(\.[0-9]+)?)?">
+      <button class="btn primary" type="submit">Save</button>
+    </form>
+    <p class="small muted mt8">Leave it empty to expect the version most controllers run.</p>
+    {{else}}
+    <p class="small sec">This cluster comes from the configuration file: set <code>k0sVersion</code> for it there and restart the service.</p>
+    {{end}}
+    {{end}}
+  </div>
+</div>
+{{end}}

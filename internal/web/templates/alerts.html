@@ -1,0 +1,64 @@
+{{define "content"}}{{$d := .Data}}{{$st := $d.State}}{{$c := .Cluster.Name}}{{$basic := .Basic}}{{$csrf := .CSRF}}
+<div class="page-head">
+  <div>
+    <h1>{{if $basic}}Monitoring alerts{{else}}Alerts{{end}}</h1>
+    <div class="sub">{{if $basic}}What your monitoring (Prometheus) warns about right now, next to the problems k0s-monitor found{{else}}Firing alerts from the cluster's Prometheus, linked to the issues about the same object{{end}}</div>
+  </div>
+</div>
+{{if not $d.Read}}
+<div class="notice"><i class="ic info">i</i><span>{{if $basic}}k0s-monitor can't read alerts for this cluster: it has found no Prometheus for it, or its Prometheus doesn't share its alerts.{{else}}No alerts can be read: no Prometheus is in use for this cluster, or neither its alerts API (<span class="mono">/api/v1/alerts</span>) nor the <span class="mono">ALERTS</span> series answered. VictoriaMetrics answers the alerts API when it runs with <span class="mono">-vmalert.proxyURL</span>.{{end}} <a href="/c/{{$c}}/settings">{{if $basic}}Connection{{else}}Metrics source{{end}}</a></span></div>
+{{else}}
+<div class="small muted mb12">{{if $basic}}{{plural $d.Shown "alert"}}; {{$d.Linked}} about a problem k0s-monitor found too.{{else}}{{plural $d.Shown "firing alert"}} in {{plural (len $d.Groups) "kind"}}, {{$d.Linked}} linked to an issue · read from <span class="mono">{{$d.Source}}</span> through the {{$d.From}}{{end}}{{if $d.Hidden}} · <a href="#hidden">{{$d.Hidden}} hidden</a>{{end}}</div>
+<div class="card">
+  {{range $i, $g := $d.Groups}}
+  {{if eq (len $g.Rows) 1}}{{$a := index $g.Rows 0}}
+  <div class="bitem upd alert-item{{if eq $i 0}} first{{end}}" id="alert-{{$a.ID}}"><i class="ic {{sevClass $a.Severity}}" aria-hidden="true">{{if eq (sevClass $a.Severity) "info"}}i{{else}}!{{end}}</i>
+    <div>
+      <div class="alert-top"><div class="bt">{{if $basic}}{{$a.Name}}{{else}}<span class="mono">{{$a.Name}}</span>{{end}}{{with $a.Severity}} <span class="tag">{{if $basic}}{{plainSeverity .}}{{else}}{{.}}{{end}}</span>{{end}}</div>
+        {{template "alerthide" (dict "cluster" $c "csrf" $csrf "name" $a.Name "server" "" "label" "Hide")}}</div>
+      {{with $a.Text}}<div class="bw">{{.}}</div>{{end}}
+      {{template "alertabout" (dict "a" $a "basic" $basic)}}
+      {{template "alertproblems" (dict "a" $a "basic" $basic "c" $c)}}
+    </div>
+  </div>
+  {{else}}
+  <div class="bitem upd alert-item{{if eq $i 0}} first{{end}}" id="alerts-{{$g.Name}}"><i class="ic {{sevClass $g.Severity}}" aria-hidden="true">{{if eq (sevClass $g.Severity) "info"}}i{{else}}!{{end}}</i>
+    <div>
+      <div class="alert-top"><div class="bt">{{if $basic}}{{$g.Name}}{{else}}<span class="mono">{{$g.Name}}</span>{{end}}{{with $g.Severity}} <span class="tag">{{if $basic}}{{plainSeverity .}}{{else}}{{.}}{{end}}</span>{{end}} <span class="tag">×{{len $g.Rows}}</span></div>
+        {{template "alerthide" (dict "cluster" $c "csrf" $csrf "name" $g.Name "server" "" "label" (printf "Hide all %d" (len $g.Rows)))}}</div>
+      {{with $g.Text}}<div class="bw">{{.}}</div>{{end}}
+      <div class="small muted">{{plural (len $g.Rows) "alert"}}{{if $g.Servers}} on {{plural $g.Servers "server"}}{{end}}{{if not $g.Since.IsZero}} · {{if $basic}}the first since {{agoPlain $g.Since}}{{else}}firing for up to {{ago $g.Since}}{{end}}{{end}}{{if $g.Linked}} · {{$g.Linked}} about {{if $basic}}a problem k0s-monitor found{{else}}an issue{{end}}{{end}}{{if $g.Hidden}} · {{$g.Hidden}} hidden{{end}}</div>
+      <details class="alert-list mt8"><summary class="small">Show each of them</summary>
+        <ul class="plain">{{range $g.Rows}}{{$a := .}}<li id="alert-{{$a.ID}}">
+          <div class="alert-top">{{template "alertabout" (dict "a" $a "basic" $basic)}}{{with $a.Server}}{{template "alerthide" (dict "cluster" $c "csrf" $csrf "name" $a.Name "server" . "label" (printf "Hide on %s" .))}}{{end}}</div>
+          {{template "alertproblems" (dict "a" $a "basic" $basic "c" $c "quiet" true)}}
+        </li>{{end}}</ul>
+      </details>
+    </div>
+  </div>
+  {{end}}
+  {{else}}
+  <div class="empty"><h2>{{if $basic}}No alerts{{else}}No firing alerts{{end}}</h2><p>{{if $d.Hidden}}{{if $basic}}Only the hidden ones below.{{else}}Only hidden ones (below).{{end}}{{else}}{{if $basic}}Your monitoring doesn't warn about anything right now.{{else}}Prometheus reports no firing alerts (heartbeat alerts such as Watchdog are left out).{{end}}{{end}}</p></div>
+  {{end}}
+</div>
+{{end}}
+{{with $d.Mutes}}
+<div class="card mt16" id="hidden">
+  <div class="card-head"><h2>Hidden</h2><span class="sub">only here: Prometheus and its Alertmanager are unchanged</span></div>
+  <ul class="checks">{{range .}}<li><i class="ic info" aria-hidden="true">–</i><span class="grow"><b{{if not $basic}} class="mono"{{end}}>{{.Name}}</b> {{if .Server}}on {{.Server}}{{else}}everywhere{{end}}
+    <div class="small muted">{{if .Until}}until {{stamp .Until}}{{else if .WhileFiring}}while it fires{{else}}until shown again{{end}} · by {{.By}} {{agoPlain .Created}} · {{if .Hides}}hides {{plural .Hides "alert"}} now{{else}}nothing fires now{{end}}</div></span>
+    <form method="post" action="/c/{{$c}}/alerts" class="inline"><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="action" value="show"><input type="hidden" name="name" value="{{.Name}}"><input type="hidden" name="server" value="{{.Server}}"><button class="btn sm" type="submit">Show again</button></form></li>{{end}}</ul>
+</div>
+{{end}}
+{{end}}
+
+{{/* What an alert is about, and since when. Needs: a, basic */}}
+{{define "alertabout"}}{{$a := .a}}<div class="small muted">{{with $a.Detail}}<b class="sec">{{.}}</b> · {{end}}{{with $a.About.Name}}{{if $.basic}}About {{plainRef $a.About}}{{else}}<span class="mono">{{ref $a.About}}</span>{{end}}{{end}}{{if not $a.Since.IsZero}}{{if $a.About.Name}} · {{end}}{{if $.basic}}since {{agoPlain $a.Since}}{{else}}firing for {{ago $a.Since}}{{end}}{{end}}{{if not $.basic}}{{with $a.Runbook}} · <a href="{{.}}" target="_blank" rel="noopener noreferrer">runbook</a>{{end}}{{with alertLabels $a.Labels}}<div class="mono wrapany">{{range $j, $l := .}}{{if $j}} {{end}}{{$l}}{{end}}</div>{{end}}{{end}}</div>{{end}}
+
+{{/* The problems an alert is about. Needs: a, basic, c; quiet leaves out "none". */}}
+{{define "alertproblems"}}{{$a := .a}}{{if $a.Problems}}<div class="small mt8">{{range $j, $f := $a.Problems}}{{if $j}}; {{end}}{{if eq $j 0}}{{if $.basic}}Problem: {{else}}Issue: {{end}}{{end}}<a href="/c/{{$.c}}/problems/{{$f.ID}}">{{if $.basic}}{{$f.Plain.Title}}{{else}}{{$f.Title}}{{end}}</a>{{end}}</div>{{else if not .quiet}}<div class="small mt8 muted">{{if $.basic}}k0s-monitor found no problem about this.{{else}}No issue about this object.{{end}}</div>{{end}}{{end}}
+
+{{/* Hide alerts by name, maybe on one server. Needs: cluster, csrf, name, server, label */}}
+{{define "alerthide"}}<details class="menu alert-hide"><summary class="btn sm">{{.label}} ▾</summary>
+<form method="post" action="/c/{{.cluster}}/alerts" class="menu-list"><input type="hidden" name="csrf" value="{{.csrf}}"><input type="hidden" name="name" value="{{.name}}"><input type="hidden" name="server" value="{{.server}}">
+<button type="submit" name="for" value="1d">for a day</button><button type="submit" name="for" value="1w">for a week</button><button type="submit" name="for" value="firing">while it fires</button><button type="submit" name="for" value="always">until shown again</button></form></details>{{end}}

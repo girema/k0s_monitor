@@ -1,0 +1,57 @@
+{{define "prichip"}}<span class="pri {{pri .}}">{{.}}</span>{{end}}
+
+{{define "urgchip"}}<span class="urg {{urg .}}">{{plainLabel .}}</span>{{end}}
+
+{{define "meter"}}<svg class="msvg {{.cls}}" viewBox="0 0 100 8" preserveAspectRatio="none" role="img" aria-label="{{.v}} of 100"><rect class="trk" width="100" height="8" rx="3"/><rect class="val" width="{{meterW .v}}" height="8" rx="3"/></svg>{{end}}
+
+{{/* Tags that tell the state of a finding. Needs: f, basic */}}
+{{define "tags"}}{{with .f}}{{if .Stale}}<span class="tag stale-tag" title="The cluster can't be reached; this is what was last seen">{{if $.basic}}last known{{else}}stale{{end}}</span>{{end}}{{if eq .State "acknowledged"}}<span class="tag quiet">{{if $.basic}}{{with .StateBy}}{{.}} is on it{{else}}seen{{end}}{{else}}acknowledged{{with .StateBy}} by {{.}}{{end}}{{end}}</span>{{end}}{{if eq .State "snoozed"}}<span class="tag quiet" title="until {{stamp .SnoozedUntil}}">snoozed{{with .StateBy}} by {{.}}{{end}}</span>{{end}}{{with shownAlerts .Cluster .Alerts}}<span class="tag alert-tag" title="{{range $i, $a := .}}{{if $i}}, {{end}}{{$a.Name}}{{end}}">{{if $.basic}}monitoring alert{{else}}{{(index . 0).Name}}{{if gt (len .) 1}} +{{add (len .) -1}}{{end}}{{end}}</span>{{end}}{{if isNew .}}<span class="tag new">NEW</span>{{end}}{{end}}{{end}}
+
+{{/* Steps to fix. Needs: f, basic */}}
+{{define "steps"}}{{if .f.Remedy.Steps}}{{if .basic}}{{$plain := plainSteps .f.Remedy.Steps}}{{$tech := techSteps .f.Remedy.Steps}}
+{{if $plain}}<ol class="steps">{{range $plain}}{{template "step" (dict "s" . "basic" true)}}{{end}}</ol>{{end}}
+{{if $tech}}<details class="tech-steps{{if not $plain}} only{{end}}"{{if not $plain}} open{{end}}><summary>{{if $plain}}More checks{{else}}Checks{{end}} for whoever manages the cluster ({{len $tech}})</summary>
+<p class="small sec">These need access to the cluster or its servers. Copy them and send them along, or show them to your support team.</p>
+<ol class="steps">{{range $tech}}{{template "step" (dict "s" . "basic" false)}}{{end}}</ol></details>{{end}}
+{{else}}<ol class="steps">{{range .f.Remedy.Steps}}{{template "step" (dict "s" . "basic" false)}}{{end}}</ol>{{end}}{{end}}{{end}}
+
+{{define "step"}}{{$s := .s}}<li><div>{{if and .basic $s.Plain}}{{$s.Plain}}{{else}}{{$s.Text}}{{end}}{{if $s.Host}}<span class="host">run on {{$s.Host}}</span>{{end}}{{with $s.Pack}}<span class="from-pack" title="From the product pack {{.}}">{{if $.basic}}from your product's guide{{else}}pack {{.}}{{end}}</span>{{end}}</div>{{if $s.Command}}<div class="cmd multi"><span>{{$s.Command}}</span><button type="button" data-copy="{{$s.Command}}">Copy</button></div>{{end}}</li>{{end}}
+
+{{/* "Also affected: …" under a problem in Basic mode; symptoms about the
+same object are details of it ("Also: …"). Needs: f, children */}}
+{{define "also"}}{{with .children}}<div class="ba">{{if sameObject $.f .}}Also{{else}}Also affected{{end}}: {{range $j, $ch := .}}{{if $j}}; {{end}}{{lowerFirst $ch.Plain.Title}}{{end}}</div>{{end}}{{end}}
+
+{{/* Links a product pack adds to a finding. Needs: f, basic */}}
+{{define "docs"}}{{with .f.Docs}}<div class="mt16"><h3 class="muted small">{{if $.basic}}YOUR PRODUCT'S DOCUMENTATION{{else}}DOCUMENTATION{{end}}</h3><ul class="docs">{{range .}}<li><a href="{{.URL}}" target="_blank" rel="noopener noreferrer">{{.Title}}</a></li>{{end}}</ul></div>{{end}}{{end}}
+
+{{/* Acknowledge, snooze and reopen. Needs: f, cluster, csrf, back, basic */}}
+{{define "stateform"}}<div class="btnrow">
+{{if or (eq .f.State "acknowledged") (eq .f.State "snoozed")}}
+<form method="post" action="/c/{{.cluster}}/problems/{{.f.ID}}/state" class="inline"><input type="hidden" name="csrf" value="{{.csrf}}"><input type="hidden" name="back" value="{{.back}}"><input type="hidden" name="action" value="reopen"><button class="btn" type="submit">{{if .basic}}Show it again{{else}}Reopen{{end}}</button></form>
+{{else}}
+<form method="post" action="/c/{{.cluster}}/problems/{{.f.ID}}/state" class="inline"><input type="hidden" name="csrf" value="{{.csrf}}"><input type="hidden" name="back" value="{{.back}}"><input type="hidden" name="action" value="ack"><button class="btn" type="submit" title="{{if .basic}}Set it aside: the lists hide it, and there are no notifications about it unless it gets worse{{else}}Stays in the list, no more notifications unless it gets worse{{end}}">{{if .basic}}I'm on it{{else}}Acknowledge{{end}}</button></form>
+<details class="menu"><summary class="btn">{{if .basic}}Remind me later{{else}}Snooze{{end}} ▾</summary>
+<form method="post" action="/c/{{.cluster}}/problems/{{.f.ID}}/state" class="menu-list"><input type="hidden" name="csrf" value="{{.csrf}}"><input type="hidden" name="back" value="{{.back}}"><input type="hidden" name="action" value="snooze">
+<button type="submit" name="for" value="1h">for 1 hour</button><button type="submit" name="for" value="4h">for 4 hours</button><button type="submit" name="for" value="1d">for 1 day</button><button type="submit" name="for" value="1w">for 1 week</button></form></details>
+{{end}}
+</div>{{end}}
+
+{{/* A usage cell: a meter with its percentage, or a short text. */}}
+{{define "usage"}}{{if .Known}}<div class="mcell" title="{{.Title}}">{{template "meter" (dict "v" .Pct "cls" .Cls)}}<span class="v">{{.Pct}}%</span></div>{{else}}<span class="muted small" title="{{.Title}}">{{.Text}}</span>{{end}}{{end}}
+
+{{/* A line chart drawn by charts.js, with a table for everyone. */}}
+{{define "chart"}}{{if .JSON}}<div class="chart" data-chart="{{.JSON}}" role="img" aria-label="{{.Aria}}"></div>
+<details class="tv"><summary>Table view</summary><table class="t"><thead><tr><th>Time (UTC)</th><th class="r">Used</th></tr></thead><tbody>{{range .Rows}}<tr><td>{{index . 0}}</td><td class="r">{{index . 1}}</td></tr>{{end}}</tbody></table></details>{{else}}<div class="small muted">{{.Empty}}</div>{{end}}{{end}}
+
+{{define "fallback"}}{{with .st.Info}}{{with .Fallback}}<div class="notice info"><i class="ic info" aria-hidden="true">⇄</i><span>{{if $.basic}}k0s-monitor watches this cluster through the server <b>{{.Controller}}</b>, because the server named in the cluster's configuration file doesn't answer. It switches back when that one answers again.{{else}}Connected through controller <b>{{.Controller}}</b> (<span class="mono">{{$.st.Info.Server}}</span>): the kubeconfig's server <span class="mono">{{.Server}}</span> doesn't answer{{with .Error}} ({{clause .Plain}}){{end}}, since {{stamp .Since}}. k0s-monitor switches back once it answers for a minute.{{end}}</span></div>{{end}}{{end}}{{end}}
+
+{{/* knownerrors lists the known errors found in a log: .m the matches, .basic the mode. */}}
+{{define "knownerrors"}}{{with .m}}<div class="mt16"><h3 class="muted small">{{if $.basic}}WHAT THE LOG SAYS{{else}}KNOWN ERRORS IN THE LOG{{end}}</h3>
+<ul class="checks mt8 known">{{range .}}<li><i class="ic warn">▲</i><span>{{if $.basic}}{{.Plain}} {{.PlainHint}}{{else}}<b>{{.Title}}</b> <span class="muted small">· {{plural .Count "line"}}</span><br><span class="small">{{.Cause}}</span><br><span class="small muted">Check: {{.Hint}}</span>{{end}}</span></li>{{end}}</ul></div>{{end}}{{end}}
+
+{{/* rollout shows what an update changed: .r the rollout, .basic the mode. */}}
+{{define "rollout"}}{{with .r}}<div class="mt16"><h3 class="muted small">{{if $.basic}}WHAT THE UPDATE CHANGED{{else}}WHAT CHANGED: REVISION {{.Previous}} → {{.Revision}}{{end}}</h3>
+<div class="small muted mt8">{{if $.basic}}The app was updated {{agoPlain .At}}, and the failing parts all come from that update.{{else}}Rolled out {{stamp .At}} ({{agoPlain .At}}). Every failing pod comes from revision {{.Revision}}.{{end}}</div>
+{{if .Changes}}<div class="tbl-wrap"><table class="t changes mt8"><thead><tr><th>{{if $.basic}}Part{{else}}Container{{end}}</th><th>{{if $.basic}}Setting{{else}}Field{{end}}</th><th>Before</th><th>After</th></tr></thead><tbody>
+{{range .Changes}}<tr><td class="{{if or .Container (not $.basic)}}mono {{end}}small">{{with .Container}}{{.}}{{else}}{{if $.basic}}the whole app{{else}}pod{{end}}{{end}}</td><td class="small">{{if $.basic}}{{plainChange .What}}{{else}}{{.What}}{{end}}</td>{{if and .Old (eq .Old .New)}}<td class="small muted" colspan="2">changed (value hidden)</td>{{else}}<td class="mono small">{{or .Old "—"}}</td><td class="mono small">{{or .New "—"}}</td>{{end}}</tr>{{end}}
+</tbody></table></div>{{else}}<p class="small mt8">{{if $.basic}}None of its versions, settings, memory or storage changed.{{else}}No difference in images, commands, environment, resources, probes or volumes.{{end}}</p>{{end}}</div>{{end}}{{end}}

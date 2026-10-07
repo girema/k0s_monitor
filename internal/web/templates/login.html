@@ -1,0 +1,12 @@
+{{define "content"}}<div class="login-wrap">
+<form class="card login" method="post" action="/login">
+  <div class="brand"><div class="brand-mark">k0</div><b>k0s-monitor</b></div>
+  <div><h1>Sign in</h1><div class="small muted mt8">It only reads from your clusters and never changes them.</div></div>
+  {{with .Data.Error}}<div class="notice bad" role="alert"><i class="ic crit">!</i><span>{{.}}</span></div>{{end}}
+  <input type="hidden" name="next" value="{{.Data.Next}}">
+  <div class="form-row"><label for="user">User name</label><input class="input" id="user" type="text" name="user" value="{{.Data.User}}" placeholder="admin" autocomplete="username" autocapitalize="none" spellcheck="false" {{if not .Data.User}}autofocus{{end}}></div>
+  <div class="form-row"><label for="password">Password</label><input class="input" id="password" type="password" name="password" autocomplete="current-password" {{if .Data.User}}autofocus{{end}} required></div>
+  <button class="btn primary" type="submit">Sign in</button>
+  <div class="small muted">Forgot your password? Another user can set a new one in Settings, or on the jump host run <code>sudo k0s-monitor passwd --user NAME</code>.</div>
+</form>
+</div>{{end}}

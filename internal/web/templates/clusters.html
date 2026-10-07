@@ -1,0 +1,61 @@
+{{define "content"}}{{$d := .Data}}{{$basic := .Basic}}
+<div class="page-head">
+  <div>
+    <h1>All clusters</h1>
+    <div class="sub">{{if $d.Cards}}{{plural (len $d.Cards) "cluster"}}{{if $basic}}{{if $d.P1}} · {{$d.P1}} {{if eq $d.P1 1}}problem needs{{else}}problems need{{end}} fixing now{{end}}{{else}} · P1 {{$d.P1}} · P2 {{$d.P2}}{{if $d.Unreachable}} · {{$d.Unreachable}} unreachable{{end}}{{end}}{{else}}No clusters yet{{end}}</div>
+  </div>
+  <div class="actions">{{if $d.CanAdd}}<a class="btn primary" href="/clusters/add">Add cluster</a>{{end}}</div>
+</div>
+
+{{if not $d.Cards}}
+<div class="card empty">
+  <h2>Add your first cluster</h2>
+  <p>Upload its <code>cluster.config</code> (a kubeconfig) or paste its content. k0s-monitor then checks the cluster all the time and tells you, in plain words, what to fix first.</p>
+  {{if $d.CanAdd}}<a class="btn primary" href="/clusters/add">Add cluster</a>{{else}}<p class="small muted">Adding clusters in the UI needs the key that <code>k0s-monitor init</code> creates. You can also list clusters in the configuration file.</p>{{end}}
+</div>
+{{else}}
+{{if not $basic}}
+<div class="tiles">
+  <div class="tile"><div class="lab">Clusters</div><div class="val">{{len $d.Cards}}</div><div class="delta">up to 5 per instance</div></div>
+  <div class="tile"><div class="lab"><span class="pri p1">P1</span>Fix now</div><div class="val">{{$d.P1}}</div><div class="delta">root causes, all clusters</div></div>
+  <div class="tile"><div class="lab"><span class="pri p2">P2</span>Fix today</div><div class="val">{{$d.P2}}</div><div class="delta">root causes, all clusters</div></div>
+  <div class="tile"><div class="lab">Memory</div><div class="val">{{$d.MemoryMiB}}<span class="small muted"> MiB</span></div><div class="delta">used by k0s-monitor</div></div>
+</div>
+{{end}}
+<div class="fleet">
+{{range $d.Cards}}{{$st := .State}}
+  <div class="cl{{if eq $st.Status "unreachable"}} off{{else if .Nav.Hot}} bad{{end}}">
+    <div class="top">
+      <i class="ic {{.Nav.Icon}}" aria-hidden="true">{{.Nav.Mark}}</i>
+      <h2><a href="/c/{{$st.Name}}">{{$st.Name}}</a></h2>
+      {{if .Stale}}<span class="tag stale-tag">{{if $basic}}last known{{else}}stale{{end}}</span>{{end}}
+      {{if not $basic}}<span class="right-a small muted">{{if .FromUI}}added in the UI{{else}}config file{{end}}</span>{{end}}
+    </div>
+    <div class="score-row">
+      {{if eq $st.Status "connecting"}}<span class="st"><i class="ic info">…</i>Connecting…</span>
+      {{else if eq $st.Status "unreachable"}}<span class="st"><i class="ic crit">✕</i>{{if $basic}}Can't be reached{{else}}Unreachable{{end}}</span>
+      {{else if .Health}}
+        {{if $basic}}<span class="st"><i class="ic {{.Nav.Icon}}">{{.Nav.Mark}}</i>{{if .Nav.Hot}}Needs attention{{else if .Nav.Today}}Needs attention today{{else if .Problems}}Working, with things to plan{{else}}Working normally{{end}}</span>
+        {{else}}<span class="big">{{.Health.Score}}</span><span class="muted">/ 100</span><span class="st small"><i class="ic {{healthCls .Health.Score}}">{{healthIc .Health.Score}}</i>{{.Health.Label}}</span>{{end}}
+      {{end}}
+    </div>
+    {{if not $basic}}{{if $st.Counts}}<div class="counts">
+      <span class="c"><span class="pri p1">P1</span>{{count .PCounts "P1"}}</span><span class="c"><span class="pri p2">P2</span>{{count .PCounts "P2"}}</span><span class="c"><span class="pri p3">P3</span>{{count .PCounts "P3"}}</span><span class="c"><span class="pri p4">P4</span>{{count .PCounts "P4"}}</span>
+    </div>{{end}}{{end}}
+    {{if eq $st.Status "unreachable"}}<div class="err">{{with $st.Error}}<b>{{.Plain}}</b><br><span class="sec">{{.Hint}}</span>{{end}}<div class="small muted mt8">{{if $st.LastSync}}Last data {{agoPlain $st.LastSync}}.{{else}}Never connected.{{end}} {{if $st.RetryAt}}Next try {{stamp $st.RetryAt}}.{{end}}</div></div>{{end}}
+    {{if not $basic}}{{with $st.Info}}<div class="meta">
+      <span title="version">{{.Version}}{{if .K0s}} · k0s{{end}}</span><span>{{plural .Nodes "node"}} · {{plural .Pods "pod"}}</span>
+      <span class="mono" title="API server">{{.Server}}</span><span>{{if $st.LastSync}}synced {{ago $st.LastSync}} ago{{end}}</span>
+    </div>{{end}}{{end}}
+    {{with .Top}}<div class="top-issue">{{if $basic}}Fix first: <b>{{.Plain.Title}}</b>{{else}}Top issue: <span class="pri {{pri .Priority}}">{{.Priority}}</span> <b>{{.Title}}</b>{{end}}</div>{{end}}
+    <div class="foot">
+      <a class="btn" href="/c/{{$st.Name}}">Open</a>
+      {{if .Problems}}<a class="btn" href="/c/{{$st.Name}}/problems">{{if $basic}}See problems{{else}}Issues{{end}} ({{.Problems}})</a>{{end}}
+      {{if eq $st.Status "unreachable"}}<button class="btn" type="button" data-post="/api/v1/clusters/{{$st.Name}}/retry">Try again now</button>{{end}}
+    </div>
+  </div>
+{{end}}
+{{if $d.CanAdd}}<a class="cl add" href="/clusters/add"><div><div class="big-plus">+</div><b>Add cluster</b><div class="small muted mt8">Upload or paste its cluster.config</div></div></a>{{end}}
+</div>
+{{end}}
+{{end}}

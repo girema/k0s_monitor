@@ -1,0 +1,80 @@
+{{define "content"}}{{$d := .Data}}{{$f := $d.F}}{{$c := .Cluster.Name}}{{$basic := .Basic}}{{$csrf := .CSRF}}{{$back := .Path}}
+<div class="crumbs"><a href="/c/{{$c}}">{{$c}}</a> / <a href="/c/{{$c}}/problems">{{if $basic}}Problems{{else}}Issues{{end}}</a></div>
+<div class="pod-head plain">
+  <div class="grow">
+    <div class="row">{{if $basic}}{{template "urgchip" $f.Priority}}{{else}}{{template "prichip" $f.Priority}}{{if $f.Score}}<span class="score">score {{$f.Score}}</span>{{end}}{{if $f.RuleID}}<code>{{$f.RuleID}}</code>{{end}}{{end}} {{template "tags" (dict "f" $f "basic" $basic)}}</div>
+    <h1 class="mt8">{{if $basic}}{{if $f.Plain.Title}}{{$f.Plain.Title}}{{else}}{{$f.Title}}{{end}}{{else}}{{$f.Title}}{{end}}</h1>
+    {{if not $basic}}<div class="facts"><span>Resource <b class="mono">{{with $d.SecretLink}}<a href="{{.}}">{{ref $f.Resource}}</a>{{else}}{{ref $f.Resource}}{{end}}</b></span>{{if $f.Since}}<span>Since <b>{{stamp $f.Since}}</b></span>{{end}}{{if $f.FirstSeen}}<span>First seen <b>{{stamp $f.FirstSeen}}</b></span>{{end}}{{if $f.LastSeen}}<span>Last seen <b>{{stamp $f.LastSeen}}</b></span>{{end}}<span>Category <b>{{cat $f.Category false}}</b></span>{{with $f.App}}<span>App <b>{{.}}</b></span>{{end}}</div>{{end}}
+  </div>
+  {{if not $d.Resolved}}{{template "stateform" (dict "f" $f "cluster" $c "csrf" $csrf "back" $back "basic" $basic)}}{{end}}
+</div>
+
+{{if $d.Resolved}}<div class="notice good"><i class="ic good">✓</i><span>{{if $basic}}This problem is fixed.{{else}}Resolved.{{end}} The history below shows when it happened.</span></div>{{end}}
+{{with $d.Parent}}<div class="notice warn"><i class="ic warn">▲</i><span>{{if $basic}}This is caused by another problem: {{end}}{{if not $basic}}Symptom of {{end}}<a href="/c/{{$c}}/problems/{{.ID}}">{{if $basic}}{{.Plain.Title}}{{else}}{{.Title}}{{end}}</a>. {{if $basic}}Fixing that one fixes this too.{{else}}Fix the root cause first.{{end}}</span></div>{{end}}
+{{if eq $f.State "snoozed"}}<div class="notice"><i class="ic info">z</i><span>{{if $basic}}Set aside until {{stamp $f.SnoozedUntil}}: it comes back then, or sooner if it gets worse.{{else}}Snoozed until {{stamp $f.SnoozedUntil}}. It comes back earlier if it gets worse.{{end}}</span></div>{{end}}
+{{if eq $f.State "acknowledged"}}<div class="notice"><i class="ic info">✓</i><span>{{if $basic}}{{with $f.StateBy}}{{.}} is on it{{else}}Someone is on it{{end}}, so it is set aside: the lists hide it, and there are no notifications about it unless it gets worse.{{else}}Acknowledged: no notifications unless the priority rises.{{end}}</span></div>{{end}}
+
+{{if not $d.Resolved}}
+<div class="pod-layout">
+  <div class="card">
+    {{if $basic}}
+    <div class="prose">
+      {{$g := newGloss}}<h3>What happened</h3><p>{{$g.Mark $f.Plain.WhatHappened}}</p>
+      {{with $f.Plain.Why}}<h3>Why</h3><p>{{$g.Mark .}}</p>{{end}}
+      <h3>What to do</h3><p>{{$g.Mark $f.Plain.WhatToDo}}</p>
+    </div>
+    {{if $f.Remedy.Steps}}<div class="problem"><div class="ph"><b>Steps</b><span class="small muted">in this order; copy the commands with the buttons</span></div><div class="pb">{{template "steps" (dict "f" $f "basic" true)}}</div></div>{{end}}
+    {{template "docs" (dict "f" $f "basic" true)}}
+    {{template "rollout" (dict "r" $f.Rollout "basic" true)}}
+    {{template "knownerrors" (dict "m" $d.Matches "basic" true)}}
+    {{template "loglines" (dict "d" $d "c" $c "basic" true)}}
+    <div class="small mt16"><a href="?mode=full">Show technical details</a></div>
+    {{else}}
+    {{$g := newGloss}}<div class="prose"><h3>Summary</h3><p>{{$g.Mark $f.Summary}}</p>{{with $f.Remedy.LikelyCause}}<h3>Likely cause</h3><p>{{$g.Mark .}}</p>{{end}}</div>
+    {{if $f.Evidence}}<h3 class="muted small">EVIDENCE</h3><table class="evidence mt8">{{range $f.Evidence}}<tr><td>{{.Label}}</td><td>{{.Value}}</td></tr>{{end}}</table>{{end}}
+    {{template "rollout" (dict "r" $f.Rollout "basic" false)}}
+    {{template "knownerrors" (dict "m" $d.Matches "basic" false)}}
+    {{template "loglines" (dict "d" $d "c" $c "basic" false)}}
+    {{if $f.Remedy.Steps}}<h3 class="muted small mt16">STEPS TO FIX</h3><div class="mt8">{{template "steps" (dict "f" $f "basic" false)}}</div>{{end}}
+    {{template "docs" (dict "f" $f "basic" false)}}
+    {{end}}
+    <div class="small sec mt16">{{if $basic}}Stuck? <a href="/c/{{$c}}/report">Download a report for support</a> and send it to {{with $d.Support}}{{.}}{{else}}your support team{{end}}.{{else}}Need help? <a href="/c/{{$c}}/report">Prepare a support bundle</a> with this issue's evidence, describe output and logs{{with $d.Support}} for {{.}}{{end}}.{{end}}</div>
+    {{with $d.AI}}<div class="problem mt16" id="ai" data-ai data-url="/api/v1/clusters/{{$c}}/findings/{{$f.ID}}/explain" data-mode="{{if $basic}}basic{{else}}full{{end}}">
+      <div class="ph"><b>{{if $basic}}Ask AI to explain{{else}}Explain with AI{{end}}</b><span class="small muted">{{.Model}}{{if .Local}} · on your network{{else}} · {{.Host}}{{end}}</span></div>
+      <div class="pb">
+        <div class="ai-answer raw" data-ai-answer{{if not .Answer}} hidden{{end}}>{{with .Answer}}{{.Text}}{{end}}</div>
+        <div class="small muted" data-ai-meta>{{with .Answer}}Written by {{.Model}} {{agoPlain .At}}{{with .By}}, asked by {{.}}{{end}}. It can be wrong: check before you act.{{else}}{{if $basic}}A language model explains this problem and what to do, in plain words.{{else}}A language model explains the cause and the fix from this problem's evidence.{{end}} It can be wrong: check before you act.{{end}}</div>
+        <div class="ai-status small" data-ai-status hidden></div>
+        <div class="btnrow mt8"><button class="btn primary" type="button" data-ai-ask>{{if .Answer}}Ask again{{else}}{{if $basic}}Explain this problem{{else}}Explain{{end}}{{end}}</button><button class="btn" type="button" data-ai-stop hidden>Stop</button></div>
+        <details class="ai-sent mt8"><summary class="small">What is sent{{if not .Local}} to {{.Host}}{{end}}</summary><pre class="term">{{range .Sent}}[{{.Role}}]
+{{.Content}}
+{{end}}</pre></details>
+      </div>
+    </div>{{end}}
+  </div>
+  <div>
+    {{if $d.Children}}<div class="problem"><div class="ph"><b>{{if $basic}}{{if sameObject $f $d.Children}}Related{{else}}Also affected{{end}}{{else}}Symptoms folded under this{{end}}</b></div><div class="pb"><ul class="checks">
+      {{range $d.Children}}<li><i class="ic warn">▲</i><span><a href="/c/{{$c}}/problems/{{.ID}}">{{if $basic}}{{.Plain.Title}}{{else}}<code>{{.RuleID}}</code> {{.Title}}{{end}}</a></span></li>{{end}}
+    </ul></div></div>{{end}}
+    {{with $d.Alerts}}<div class="problem"><div class="ph"><b>{{if $basic}}Your monitoring warns about this too{{else}}Prometheus alerts{{end}}</b></div><div class="pb"><ul class="checks">
+      {{range $al := .}}<li><i class="ic {{sevClass .Severity}}" aria-hidden="true">{{if eq (sevClass .Severity) "info"}}i{{else}}!{{end}}</i><span><b{{if not $basic}} class="mono"{{end}}>{{.Name}}</b>{{with .Severity}} <span class="small muted">{{if $basic}}{{plainSeverity .}}{{else}}{{.}}{{end}}</span>{{end}}{{with .Summary}}<div class="small">{{.}}</div>{{end}}<div class="small muted">{{if $basic}}{{with .Since}}since {{agoPlain .}}{{end}}{{else}}{{with .About.Name}}<span class="mono">{{ref $al.About}}</span> · {{end}}{{with .Since}}firing for {{ago .}}{{end}}{{with .Runbook}} · <a href="{{.}}" target="_blank" rel="noopener noreferrer">runbook</a>{{end}}{{end}}</div></span></li>{{end}}
+    </ul><div class="small muted">{{if $basic}}From your Prometheus. <a href="/c/{{$c}}/alerts">All monitoring alerts</a>{{else}}<a href="/c/{{$c}}/alerts">All firing alerts</a>{{end}}</div></div></div>{{end}}
+    {{if or $d.Pods $d.Others}}<div class="problem"><div class="ph"><b>{{if $basic}}Where{{else}}Affected objects{{end}}</b></div><div class="pb"><ul class="checks">
+      {{range $d.Pods}}<li><i class="ic info">▸</i><span>{{if $basic}}app part <a class="mono" href="{{podLink $c .}}">{{.Name}}</a>{{else}}<a class="mono" href="{{podLink $c .}}">{{ref .}}</a>{{end}}</span></li>{{end}}
+      {{range $d.Others}}<li><i class="ic info">▸</i><span>{{if $basic}}{{plainRef .}}{{else}}<span class="mono">{{ref .}}</span>{{end}}</span></li>{{end}}
+    </ul>{{if $d.Pods}}<div class="small muted">{{if $basic}}Open an app part to see its log.{{else}}Open a pod for describe, events, logs and YAML.{{end}}</div>{{end}}</div></div>{{end}}
+    {{if $d.History}}<div class="problem"><div class="ph"><b>{{if $basic}}Has this happened before?{{else}}History (30 days){{end}}</b></div><div class="pb">
+      {{if $basic}}{{if eq (len $d.History) 1}}{{with index $d.History 0}}{{if not .Resolved}}<p class="small">No: k0s-monitor first saw it {{.Started}}, and not before in the last 30 days.</p>{{else}}<p class="small">Once: {{.First}}, fixed {{.Resolved}}.</p>{{end}}{{end}}{{else}}
+      <table class="evidence">{{range $d.History}}<tr><td>{{.First}}</td><td>{{if .Resolved}}fixed {{.Resolved}}{{else}}still open{{end}} · {{plainLabel .Priority}}</td></tr>{{end}}</table>{{end}}
+      {{else}}<table class="evidence">{{range $d.History}}<tr><td>{{.First}}</td><td>{{if .Resolved}}resolved {{.Resolved}}{{else}}open{{end}} · {{.Priority}}</td></tr>{{end}}</table>{{end}}
+    </div></div>{{end}}
+  </div>
+</div>
+{{else}}
+{{if $d.History}}<div class="card"><table class="evidence">{{range $d.History}}<tr><td>{{.First}}</td><td>{{if .Resolved}}resolved {{.Resolved}}{{else}}open{{end}} · {{.Priority}}</td></tr>{{end}}</table></div>{{end}}
+{{end}}
+{{end}}
+
+{{define "loglines"}}{{with .d.Important}}<div class="mt16"><h3 class="muted small">{{if $.basic}}LOG LINES THAT MATTER{{else}}ERROR LINES IN THE LOG{{end}}</h3>
+<div class="small muted mt8">From {{$.d.LogSource}}. <a href="{{podLink $.c $.d.LogPod}}{{if not $.basic}}#logs{{end}}">{{if $.basic}}See this app part{{else}}Full log{{end}}</a></div>
+<pre class="term wrap logview mt8">{{range .}}<span class="ln-err">{{.}}</span>{{end}}</pre></div>{{else}}{{with $.d.LogError}}<div class="notice warn mt16 small"><i class="ic warn">▲</i><span>{{.}}. <a href="{{podLink $.c $.d.LogPod}}#logs">Try the pod's log</a></span></div>{{end}}{{end}}{{end}}

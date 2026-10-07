@@ -1,0 +1,14 @@
+{{define "content"}}{{$d := .Data}}
+<div class="page-head">
+  <div>
+    <h1>Glossary</h1>
+    <div class="sub">The words k0s-monitor uses, in plain language. On any page, a word with a dotted underline explains itself when you point at it or tap it.</div>
+  </div>
+</div>
+<div class="card">
+  <nav class="letters small" aria-label="Terms by letter">{{range $d.Letters}}<a href="#{{.Anchor}}">{{.Letter}}</a>{{end}}</nav>
+  <dl class="glossary">
+    {{range $d.Terms}}<dt id="{{.Anchor}}">{{.Name}}{{with .Also}}<span class="also">also {{join . ", "}}</span>{{end}}{{with .From}}<span class="from-pack" title="Explained by the product pack {{.}}">from {{.}}</span>{{end}}</dt><dd>{{.Text}}</dd>{{end}}
+  </dl>
+</div>
+{{end}}

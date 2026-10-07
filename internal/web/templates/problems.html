@@ -1,0 +1,65 @@
+{{define "content"}}{{$d := .Data}}{{$st := $d.State}}{{$c := .Cluster.Name}}{{$basic := .Basic}}{{$csrf := .CSRF}}
+<div class="page-head">
+  <div>
+    <h1>{{if $basic}}Problems{{else}}Issues{{end}}</h1>
+    <div class="sub">{{if $basic}}{{plural $d.Total "thing"}} found · most urgent first{{else}}{{plural $d.Total "open root cause"}} · {{plural $st.Symptoms "folded symptom"}}{{if $d.Suggestions}} · {{plural $d.Suggestions "good-practice suggestion"}}{{end}} · sorted by priority score{{end}}</div>
+  </div>
+  <div class="actions">
+    <a class="btn" href="/c/{{$c}}/report">{{if $basic}}Download a report for support{{else}}Support bundle{{end}}</a>
+    {{if not $basic}}<a class="btn" href="/api/v1/clusters/{{$c}}/findings" download="{{$c}}-findings.json">Export JSON</a>{{end}}
+    {{if $d.Quiet}}{{if $d.ShowQuiet}}<a class="btn" href="?">Hide {{if $basic}}those set aside{{else}}acknowledged{{end}}</a>{{else}}<a class="btn" href="?show=all">Show {{$d.Quiet}} {{if $basic}}set aside{{else}}acknowledged or snoozed{{end}}</a>{{end}}{{end}}
+  </div>
+</div>
+{{if eq $st.Status "unreachable"}}<div class="notice bad"><i class="ic crit">✕</i><span>{{if $basic}}The cluster can't be reached. This is the last known list.{{else}}Unreachable: findings are stale.{{end}} {{errorText $st.Error}}</span></div>{{end}}
+
+{{if $basic}}
+  {{range $d.Groups}}
+  <div class="card mb12">
+    {{if .Folded}}<details class="bgroup"><summary>{{template "urgchip" .Priority}}<span class="sec small">{{plural (len .Items) "item"}}: {{.Intro}}</span><span class="small right-a">Show ▾</span></summary>{{else}}<div class="bgroup-h">{{template "urgchip" .Priority}}<span class="sec small">{{plural (len .Items) "problem"}}: {{.Intro}}</span></div>{{end}}
+    {{range .Items}}
+    <div class="bitem nochip"><div>
+      <div class="bt">{{.Plain.Title}} {{template "tags" (dict "f" .Finding "basic" true)}}</div>
+      <div class="bw">{{.Plain.WhatHappened}}</div>
+      {{template "also" (dict "f" .Finding "children" .Children)}}
+    </div><a class="btn" href="/c/{{$c}}/problems/{{.ID}}">How to fix</a></div>
+    {{end}}
+    {{if .Folded}}</details>{{end}}
+  </div>
+  {{else}}
+  <div class="card empty"><h2>Nothing to fix</h2><p>Everything we checked is working.</p></div>
+  {{end}}
+  {{if $d.Suggestions}}<p class="small muted">{{plural $d.Suggestions "suggestion"}} about good practices, where nothing is broken, {{if eq $d.Suggestions 1}}is{{else}}are{{end}} listed in <a href="?mode=full&amp;category=hygiene">Full mode</a>.</p>{{end}}
+{{else}}
+  <form class="filters" method="get">
+    <div class="seg" role="group" aria-label="Priority">
+      <a class="{{if not $d.Priority}}on{{end}}" href="?category={{$d.Category}}{{if $d.ShowQuiet}}&amp;show=all{{end}}">All</a>
+      {{range $p := (list4)}}<a class="{{if eq $d.Priority $p}}on{{end}}" href="?priority={{$p}}&amp;category={{$d.Category}}{{if $d.ShowQuiet}}&amp;show=all{{end}}"><span class="pri {{lower $p}}">{{$p}}</span>{{count $d.PCounts $p}}</a>{{end}}
+    </div>
+    <select class="select" name="category" data-autosubmit aria-label="Category">
+      <option value="">Category: all</option>
+      {{range $d.CatCounts}}<option value="{{.Category}}"{{if eq (print .Category) $d.Category}} selected{{end}}>{{cat .Category false}} ({{.Roots}})</option>{{end}}
+    </select>
+    <input type="hidden" name="priority" value="{{$d.Priority}}">{{if $d.ShowQuiet}}<input type="hidden" name="show" value="all">{{end}}
+    <noscript><button class="btn" type="submit">Filter</button></noscript>
+  </form>
+  {{if $d.CatCounts}}<div class="sum-strip">{{range $d.CatCounts}}<span class="cat">{{cat .Category false}} <b>{{.Roots}}</b>{{if .Folded}} <span class="muted">({{.Folded}} folded)</span>{{end}}</span>{{end}}</div>{{end}}
+  <div class="card flush">
+    <div class="tbl-wrap">
+    <table class="t issues">
+      <thead><tr><th class="w30"></th><th class="w96">Priority</th><th>Issue</th><th>Category</th><th>Resource</th><th class="r">Age</th><th></th></tr></thead>
+      {{range $d.Items}}
+      <tbody{{if not .Children}} class="collapsed"{{end}}>
+        <tr><td>{{if .Children}}<button class="caret" type="button" aria-label="Show or hide symptoms" data-toggle-body>▼</button>{{end}}</td>
+          <td><div class="prio-cell">{{template "prichip" .Priority}}<span class="score">{{.Score}}</span></div></td>
+          <td><div class="ititle">{{.Title}} {{template "tags" (dict "f" .Finding "basic" false)}}</div><div class="idesc">{{.Summary}}</div></td>
+          <td>{{cat .Category false}}</td><td><div class="mono small">{{ref .Resource}}</div><div class="res-sub"><code>{{.RuleID}}</code></div></td>
+          <td class="r nowrap">{{if .Since}}{{ago .Since}}{{else}}{{ago .FirstSeen}}{{end}}</td>
+          <td class="r"><a class="btn sm" href="/c/{{$c}}/problems/{{.ID}}">Resolve</a></td></tr>
+        {{range .Children}}<tr class="child"><td></td><td><span class="tag sym">symptom</span></td><td colspan="3"><div class="indent"><a href="/c/{{$c}}/problems/{{.ID}}"><code>{{.RuleID}}</code></a> <span class="mono">{{ref .Resource}}</span>: {{.Title}}</div></td><td class="r nowrap">{{if .Since}}{{ago .Since}}{{else}}{{ago .FirstSeen}}{{end}}</td><td></td></tr>{{end}}
+      </tbody>
+      {{else}}<tbody><tr><td colspan="7"><div class="empty">No issues match.</div></td></tr></tbody>{{end}}
+    </table>
+    </div>
+  </div>
+{{end}}
+{{end}}

@@ -1,0 +1,42 @@
+{{define "content"}}{{$d := .Data}}{{$c := .Cluster.Name}}{{$basic := .Basic}}
+<div class="crumbs"><a href="/c/{{$c}}">{{$c}}</a> / <a href="/c/{{$c}}/servers">{{if $basic}}Servers{{else}}Nodes &amp; VMs{{end}}</a></div>
+<div class="page-head">
+  <div>
+    <h1>{{if $basic}}Add a server{{else}}Add a node{{end}}</h1>
+    <div class="sub">{{if $basic}}A new server gives your apps more room. k0s-monitor shows how; it never adds servers or creates keys to the cluster itself.{{else}}Join a worker with a join token and the k0s version the product ships. k0s-monitor never creates join tokens: a token is a credential to the cluster.{{end}}</div>
+  </div>
+</div>
+<div class="grid">
+  <div class="card s8">
+    {{if $d.Pack}}
+    <div class="card-head"><h2>{{if $basic}}How your product adds a server{{else}}The product's procedure{{end}}</h2><span class="sub">from the product pack {{$d.PackName}}</span></div>
+    {{with $d.Pack.Text}}<p>{{.}}</p>{{end}}
+    {{template "steps" (dict "f" $d.Guide "basic" $basic)}}
+    {{template "docs" (dict "f" $d.Guide "basic" $basic)}}
+    {{if not $basic}}<details class="mt16"><summary class="small">The k0s commands, for reference</summary><div class="mt8">{{template "steps" (dict "f" $d.Builtin "basic" false)}}</div></details>{{end}}
+    {{else}}
+    <div class="card-head"><h2>{{if $basic}}Steps{{else}}Join a worker{{end}}</h2><span class="sub">{{if $d.Version}}k0s {{$d.Version}}{{if not $basic}}, {{$d.VersionFrom}}{{end}}{{else}}the controllers' k0s version{{end}}</span></div>
+    {{if $basic}}<p class="small sec">Usually whoever manages your servers does this. You can copy the steps and send them.</p>{{end}}
+    {{template "steps" (dict "f" $d.Guide "basic" $basic)}}
+    {{with $d.GetK0s}}<p class="small sec mt8">{{if $basic}}With internet access on the new server, this line installs the same version instead of copying it:{{else}}With internet access, step 2 can be this instead:{{end}}</p><div class="cmd multi"><span>{{.}}</span><button type="button" data-copy="{{.}}">Copy</button></div>{{end}}
+    {{with $d.Profiles}}{{if not $basic}}<p class="small sec mt8">The configuration has worker profiles: {{join . ", "}}. Step 3 uses the first; choose the one the new node needs, or leave <code>--profile</code> out for the default.</p>{{end}}{{end}}
+    {{if $d.K0sctl}}<div class="notice info mt12"><i class="ic info" aria-hidden="true">i</i><span>{{if $basic}}This cluster was set up with k0sctl: whoever manages it can add the server to its k0sctl.yaml instead, which does these steps.{{else}}This cluster came with a k0sctl.yaml: add the host there with <code>role: worker</code> and run <code>k0sctl apply</code>, which does these steps. Keep the k0s version in k0sctl.yaml as it is.{{end}}</span></div>{{end}}
+    {{end}}
+  </div>
+  <div class="card s4">
+    <div class="card-head"><h2>{{if $basic}}What the new server needs{{else}}Before you start{{end}}</h2></div>
+    <p class="small">{{if $basic}}A Linux machine like the other servers, with the same k0s version{{with $d.Version}} ({{.}}){{end}}.{{else}}A Linux host prepared like the other nodes, for k0s {{if $d.Version}}<span class="mono">{{$d.Version}}</span>{{else}}of the controllers' version{{end}}.{{end}}</p>
+    <p class="small mt8">{{if $basic}}These network connections, open in firewalls:{{else}}Open in firewalls (k0s networking):{{end}}</p>
+    <table class="evidence ports small mt8">{{range $d.Ports}}<tr><td class="mono nowrap">{{if .Port}}{{.Port}}/{{.Proto}}{{else}}—{{end}}</td><td>{{.Between}}<div class="muted">{{.Why}}</div></td></tr>{{end}}</table>
+    {{if not $basic}}{{with $d.Network}}<p class="small sec mt8">Network provider: {{.}}.</p>{{end}}{{end}}
+    {{if not $basic}}<details class="mt12"><summary class="small">Adding a controller</summary>
+      <p class="small sec mt8">Controllers hold etcd: keep an odd number (1, 3 or 5){{if $d.Controllers}}; there {{if eq $d.Controllers 1}}is 1{{else}}are {{$d.Controllers}}{{end}} now{{end}}. They need 2380/TCP (etcd) and 9443/TCP (k0s API) between each other. The address clients use (a load balancer or DNS name) must include the new one. Ask your support team first: the product's installer may do this.</p>
+      <div class="cmd multi"><span>sudo k0s token create --role=controller --expiry=1h &gt; controller-token
+sudo k0s install controller --token-file ./controller-token
+sudo k0s start</span><button type="button" data-copy="sudo k0s token create --role=controller --expiry=1h > controller-token
+sudo k0s install controller --token-file ./controller-token
+sudo k0s start">Copy</button></div>
+    </details>{{end}}
+  </div>
+</div>
+{{end}}

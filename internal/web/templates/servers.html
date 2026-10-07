@@ -1,0 +1,92 @@
+{{define "content"}}{{$d := .Data}}{{$st := $d.State}}{{$c := .Cluster.Name}}{{$basic := .Basic}}
+<div class="page-head">
+  <div>
+    <h1>{{if $basic}}Servers{{else}}Nodes &amp; VMs{{end}}</h1>
+    <div class="sub">{{if $basic}}{{if eq (len $d.Rows) 1}}1 server runs{{else}}{{plural (len $d.Rows) "server"}} run{{end}} your apps{{else}}{{plural (len $d.Rows) "node"}} · kubelet conditions, and Prometheus (node-exporter) for usage and VM signals{{end}}</div>
+  </div>
+  <div class="actions"><a class="btn" href="/c/{{$c}}/servers/add">{{if $basic}}Add a server{{else}}Add a node{{end}}</a></div>
+</div>
+{{if eq $st.Status "unreachable"}}<div class="notice bad"><i class="ic crit">✕</i><span>{{if $basic}}The cluster can't be reached. This is the last known state.{{else}}Unreachable: what you see is stale.{{end}} {{errorText $st.Error}}</span></div>{{end}}
+{{with $d.NoUsage}}<div class="notice warn"><i class="ic warn">▲</i><span>{{.}}{{if not $basic}} See <a href="/c/{{$c}}/settings">Connection &amp; settings</a> for what was found.{{end}}</span></div>{{end}}
+
+{{range $d.Down}}{{$f := .F}}
+<div class="callout">
+  <i class="ic crit" aria-hidden="true">✕</i>
+  <div>
+    <b>{{if $basic}}{{$f.Plain.Title}}{{else}}{{$f.Title}}{{end}}</b>
+    <ul>
+      {{if $basic}}<li>{{$f.Plain.WhatHappened}}</li>{{with $f.Plain.Why}}<li>{{.}}</li>{{end}}<li>What to do: {{$f.Plain.WhatToDo}}</li><li>Not sure how? Copy the instructions and send them to whoever manages your servers.</li>
+      {{else}}<li>{{$f.Summary}}</li>{{with $f.Remedy.LikelyCause}}<li>{{.}}</li>{{end}}{{range $f.Evidence}}<li>{{.Label}}: {{.Value}}</li>{{end}}{{end}}
+    </ul>
+  </div>
+  <div class="btnrow"><a class="btn primary" href="/c/{{$c}}/problems/{{$f.ID}}">{{if $basic}}How to fix{{else}}Host checklist{{end}}</a><button class="btn" type="button" data-copy="{{.Copy}}">Copy {{if $basic}}instructions{{else}}checklist{{end}}</button></div>
+</div>
+{{end}}
+
+<div class="card flush">
+  <div class="tbl-wrap">
+  <table class="t servers">
+    <thead><tr><th>{{if $basic}}Server{{else}}Node{{end}}</th><th>Status</th><th>CPU</th><th>Memory</th><th>{{if $basic}}Disk{{else}}Disk (nodefs){{end}}</th><th class="r">{{if $basic}}App parts{{else}}Pods{{end}}</th>{{if not $basic}}<th>VM signals</th><th>Version · kernel</th>{{end}}</tr></thead>
+    <tbody>
+    {{range $d.Rows}}<tr{{if .Selected}} class="sel"{{end}}>
+      <td><a class="res" href="{{.Link}}">{{.Name}}</a><div class="res-sub">{{.Role}}{{with .IP}} · {{.}}{{end}}</div></td>
+      <td><span class="st"><i class="ic {{.Icon}}" aria-hidden="true">{{.Mark}}</i>{{if $basic}}{{.Plain}}{{else}}{{.Status}}{{end}}</span></td>
+      <td>{{template "usage" .CPU}}</td>
+      <td>{{template "usage" .Mem}}</td>
+      <td>{{template "usage" .Disk}}</td>
+      <td class="r">{{.Pods}}{{if .MaxPods}}/{{.MaxPods}}{{end}}</td>
+      {{if not $basic}}<td><div class="sig">{{range .Signals}}<span class="tag" title="{{.Title}}">{{if .Icon}}<i class="ic {{.Icon}}" aria-hidden="true">{{.Mark}}</i> {{end}}{{.Text}}</span>{{end}}</div></td>
+      <td class="small nowrap">{{.Version}}{{with .Kernel}} · {{.}}{{end}}</td>{{end}}
+    </tr>
+    {{else}}<tr><td colspan="8"><div class="empty">No nodes are known yet.</div></td></tr>{{end}}
+    </tbody>
+  </table>
+  </div>
+</div>
+{{with $d.Source}}<div class="small muted mt8">{{.}}{{if not $basic}} Disk is the filesystem that holds /var/lib/k0s. Select a node for its details.{{end}}</div>{{end}}
+
+{{with $d.Detail}}{{$top := .Top}}
+<div class="card mt16" id="detail">
+  {{if $basic}}
+    {{if $top}}
+    <div class="card-head"><h2>{{$top.Plain.Title}}</h2>{{template "urgchip" $top.Priority}}</div>
+    <p class="sec">{{$top.Plain.WhatHappened}}{{with $top.Plain.Why}} {{.}}{{end}}</p>
+    {{range $i, $s := plainSteps $top.Remedy.Steps}}{{if lt $i 3}}
+    <div class="opt{{if eq $i 0}} rec{{end}}"><div>{{if eq $i 0}}<span class="tag new">Recommended</span> {{end}}<b>{{.Plain}}</b>{{if .Host}}<div class="small sec mt8">Runs on the server {{.Host}}.</div>{{end}}</div><a class="btn{{if eq $i 0}} primary{{end}}" href="/c/{{$c}}/problems/{{$top.ID}}">Show me how</a></div>
+    {{end}}{{else}}{{if $top.Remedy.Steps}}
+    <div class="opt rec"><div><b>{{$top.Plain.WhatToDo}}</b><div class="small sec mt8">The steps are for whoever manages the cluster: copy them and send them along.</div></div><a class="btn primary" href="/c/{{$c}}/problems/{{$top.ID}}">Show me how</a></div>
+    {{end}}{{end}}
+    {{if gt (len .Problems) 1}}<div class="small sec mt12">Also on this server: {{range $j, $p := .Problems}}{{if $j}}{{if gt $j 1}}; {{end}}<a href="/c/{{$c}}/problems/{{$p.ID}}">{{lowerFirst $p.Plain.Title}}</a>{{end}}{{end}}</div>{{end}}
+    {{else}}
+    <div class="card-head"><h2>{{.Row.Name}}</h2><span class="st small"><i class="ic good">✓</i>no problems found</span></div>
+    <p class="sec">This server is working normally.{{if .Row.Disk.Known}} Its disk is {{.Row.Disk.Pct}}% full.{{end}}</p>
+    {{end}}
+  {{else}}
+  <div class="card-head"><h2>{{.Row.Name}}</h2><span class="st small"><i class="ic {{.Row.Icon}}" aria-hidden="true">{{.Row.Mark}}</i>{{.Row.Status}}</span>{{with $top}}<span class="end">{{template "prichip" .Priority}}<a class="btn sm" href="/c/{{$c}}/problems/{{.ID}}">Resolve</a></span>{{end}}</div>
+  <div class="node-detail">
+    <div>
+      <div class="sub-h">Conditions</div>
+      <ul class="cond">{{range .Conditions}}<li><i class="ic {{.Icon}}" aria-hidden="true">{{.Mark}}</i>{{.Type}}<span class="since">{{.Status}}{{with .Since}} · {{.}}{{end}}</span></li>{{end}}</ul>
+      <div class="sub-h mt16">VM / host (node-exporter)</div>
+      {{with .HostNote}}<div class="small muted">{{.}}</div>{{end}}
+      <dl class="kv narrow">{{range .Host}}{{if .Value}}<dt>{{.Label}}</dt><dd>{{.Value}}</dd>{{end}}{{end}}</dl>
+    </div>
+    <div>
+      {{if .Chart}}<div class="chart-t">{{.ChartTitle}}</div>{{template "chart" .Chart}}{{end}}
+      {{if .Filesystems}}<div class="sub-h mt16">Filesystems</div>
+      <div class="tbl-wrap"><table class="t">
+        <thead><tr><th>Mountpoint</th><th>Used</th><th class="r">Free</th><th class="r">Size</th><th class="r">Inodes</th></tr></thead>
+        <tbody>{{range .Filesystems}}<tr><td><span class="mono small">{{.Mountpoint}}</span>{{if .Kubelet}} <span class="tag">k0s data</span>{{end}}{{if .ReadOnly}} <span class="tag"><i class="ic crit">!</i> read-only</span>{{end}}<div class="res-sub">{{.Device}}{{with .FSType}} · {{.}}{{end}}</div></td><td>{{template "usage" .Used}}</td><td class="r">{{.Free}}</td><td class="r">{{.Size}}</td><td class="r">{{.Inodes}}</td></tr>{{end}}</tbody>
+      </table></div>{{end}}
+    </div>
+    <div>
+      <div class="sub-h">Problems on this node</div>
+      {{range .Problems}}<div class="small mt8">{{template "prichip" .Priority}} <a href="/c/{{$c}}/problems/{{.ID}}">{{.Title}}</a></div>{{else}}<div class="small muted">None.</div>{{end}}
+      {{with $top}}<div class="sub-h mt16">Suggested fixes</div>{{with .Remedy.LikelyCause}}<p class="small sec">{{.}}</p>{{end}}{{template "steps" (dict "f" . "basic" false)}}{{end}}
+    </div>
+  </div>
+  {{end}}
+</div>
+{{end}}
+<script src="/static/charts.js" defer></script>
+{{end}}

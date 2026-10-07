@@ -1,0 +1,100 @@
+{{define "head"}}<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="csrf" content="{{.CSRF}}">
+<meta name="cluster" content="{{if .Cluster}}{{.Cluster.Name}}{{end}}">
+<meta name="unread" content="{{.Unread}}">
+<title>{{.Title}} · k0s-monitor</title>
+<link rel="icon" href="/static/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/app.js" defer></script>{{end}}
+
+{{define "bare"}}<!doctype html>
+<html lang="en" data-mode="{{.Mode}}"{{with .Theme}} data-theme="{{.}}"{{end}}>
+<head>{{template "head" .}}</head>
+<body>{{template "content" .}}</body>
+</html>{{end}}
+
+{{define "layout"}}<!doctype html>
+<html lang="en" data-mode="{{.Mode}}"{{with .Theme}} data-theme="{{.}}"{{end}}{{if .NavHidden}} data-nav="hidden"{{end}}>
+<head>{{template "head" .}}</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="sidebar">
+    <a class="brand" href="/"><div class="brand-mark">k0</div><b>k0s-monitor</b></a>
+    {{with .Cluster}}
+    <a class="cluster" href="/" title="{{if $.Basic}}All clusters{{else}}Switch cluster{{end}}">
+      <div class="name"><i class="ic {{.Icon}}" aria-hidden="true">{{.Mark}}</i><span class="nm">{{.Name}}</span></div>
+      <div class="meta">{{if $.Basic}}{{.Plain}}{{else}}{{.Summary}}{{end}}</div>
+    </a>
+    {{end}}
+    <div class="navgroup">
+      <div class="nav-label">Clusters</div>
+      <nav class="nav">
+        <a href="/" class="{{if eq .Nav "clusters"}}active{{end}}"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>All clusters<span class="count">{{len .Clusters}}</span></a>
+        {{range .Clusters}}<a href="/c/{{.Name}}" class="{{if and $.Cluster (eq $.Cluster.Name .Name)}}current{{end}}"><i class="ic {{.Icon}}" aria-hidden="true">{{.Mark}}</i>{{.Name}}{{if .Problems}}<span class="count{{if .Hot}} hot{{end}}">{{.Problems}}</span>{{end}}</a>
+        {{end}}
+        <a href="/clusters/add" class="{{if eq .Nav "add"}}active{{end}}"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>Add cluster</a>
+      </nav>
+    </div>
+    {{with .Cluster}}
+    <div class="navgroup">
+      <div class="nav-label">Cluster: {{.Name}}</div>
+      <nav class="nav">
+        <a href="/c/{{.Name}}" class="{{if eq $.Nav "overview"}}active{{end}}"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>Overview</a>
+        <a href="/c/{{.Name}}/problems" class="{{if eq $.Nav "problems"}}active{{end}}"><svg viewBox="0 0 24 24"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4M12 17.5v.5"/></svg>{{if $.Basic}}Problems{{else}}Issues{{end}}{{if .Problems}}<span class="count{{if .Hot}} hot{{end}}">{{.Problems}}</span>{{end}}</a>
+        {{if .AlertsRead}}<a href="/c/{{.Name}}/alerts" class="{{if eq $.Nav "alerts"}}active{{end}}"><svg viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 21h4"/></svg>{{if $.Basic}}Monitoring alerts{{else}}Alerts{{end}}{{if .Alerts}}<span class="count">{{.Alerts}}</span>{{end}}</a>{{end}}
+        <a href="/c/{{.Name}}/apps" class="{{if eq $.Nav "apps"}}active{{end}}"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/></svg>{{if $.Basic}}Apps{{else}}Workloads{{end}}</a>
+        <a href="/c/{{.Name}}/servers" class="{{if eq $.Nav "servers"}}active{{end}}"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>{{if $.Basic}}Servers{{else}}Nodes &amp; VMs{{end}}</a>
+        <a href="/c/{{.Name}}/storage" class="{{if eq $.Nav "storage"}}active{{end}}"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>Storage</a>
+        <a href="/c/{{.Name}}/k0s" class="{{if eq $.Nav "k0s"}}active{{end}}"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><path d="M9 2.5v3M15 2.5v3M9 18.5v3M15 18.5v3M2.5 9h3M2.5 15h3M18.5 9h3M18.5 15h3"/></svg>k0s system</a>
+        <a href="/c/{{.Name}}/settings" class="{{if eq $.Nav "clustersettings"}}active{{end}}"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>{{if $.Basic}}Connection{{else}}Connection &amp; settings{{end}}</a>
+        <a href="/c/{{.Name}}/report" class="{{if eq $.Nav "report"}}active{{end}}"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/><path d="m5.6 5.6 3.9 3.9M14.5 14.5l3.9 3.9M18.4 5.6l-3.9 3.9M9.5 14.5l-3.9 3.9"/></svg>{{if $.Basic}}Report for support{{else}}Support bundle{{end}}</a>
+      </nav>
+    </div>
+    {{end}}
+    <div class="navgroup cfg">
+      <div class="nav-label">Configure</div>
+      <nav class="nav">
+        <a href="/settings" class="{{if eq .Nav "settings"}}active{{end}}"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>Settings</a>
+        <a href="/glossary" class="{{if eq .Nav "glossary"}}active{{end}}"><svg viewBox="0 0 24 24"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11"/></svg>Glossary</a>
+      </nav>
+    </div>
+    <div class="foot">{{if .Host}}Running on {{.Host}}<br>{{end}}{{if .URL}}{{.URL}}<br>{{end}}Read-only: never changes your clusters<br><span class="muted">version {{.Version}}</span></div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <button class="btn iconbtn" type="button" id="navToggle" data-nav-toggle aria-controls="sidebar" aria-expanded="{{if .NavHidden}}false{{else}}true{{end}}" aria-label="Show or hide the menu" title="Show or hide the menu"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M9.5 4.5v15"/></svg></button>
+      <a class="brand-mini" href="/" aria-label="k0s-monitor: all clusters" title="All clusters"><span class="brand-mark">k0</span></a>
+      <div class="right">
+        <div class="seg" id="modeSwitch" role="group" aria-label="View mode" title="Basic uses plain words. Full shows every technical detail.">
+          <a class="modebtn{{if .Basic}} on{{end}}" href="?mode=basic" data-mode="basic">Basic</a><a class="modebtn{{if not .Basic}} on{{end}}" href="?mode=full" data-mode="full">Full</a>
+        </div>
+        <details class="menu" id="themeMenu">
+          <summary class="btn iconbtn themebtn" aria-label="Light or dark colors" title="Light or dark colors"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z"/></svg></summary>
+          <div class="menu-list">
+            <a href="?theme=light" data-theme-set="light"{{if eq .Theme "light"}} class="on" aria-current="true"{{end}}>Light</a>
+            <a href="?theme=dark" data-theme-set="dark"{{if eq .Theme "dark"}} class="on" aria-current="true"{{end}}>Dark</a>
+            <a href="?theme=system" data-theme-set="system"{{if not .Theme}} class="on" aria-current="true"{{end}}>Same as the computer</a>
+          </div>
+        </details>
+        <span class="live" id="live">Live</span>
+        <span class="pill" title="k0s-monitor never changes anything in your clusters">Read-only</span>
+        <div class="bellwrap">
+          <button class="btn bell" type="button" id="bellBtn" aria-label="Notifications" aria-expanded="false" aria-controls="bellPanel"><svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21h4"/></svg><span class="bcount{{if not .Unread}} hidden{{end}}" id="bellCount">{{.Unread}}</span></button>
+          <div class="bellpanel" id="bellPanel" role="dialog" aria-label="Notifications">
+            <div class="bp-h"><b>Notifications</b><span class="small muted">all clusters</span><button class="btn link small right-a" type="button" id="markRead">Mark all as read</button></div>
+            <div class="bp-list" id="bellList"><div class="bp-empty">Loading…</div></div>
+            <div class="bp-f"><label class="row"><input type="checkbox" id="desktopToggle"> Desktop notifications</label><span class="muted">for "Fix now" problems, while this page is open</span></div>
+          </div>
+        </div>
+        {{if not .NoAuth}}<form method="post" action="/logout" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="btn sm ghost" type="submit" title="Signed in as {{.User}}">{{.User}} · Sign out</button></form>{{end}}
+      </div>
+    </header>
+    {{if .NoAuth}}<div class="banner info"><i class="ic info">i</i><span>Sign-in is off because k0s-monitor only listens on this computer. Run <code>sudo k0s-monitor init</code> to use it from other machines.</span></div>{{end}}
+    {{if .CertWarning}}<div class="banner"><i class="ic warn">▲</i><span>{{.CertWarning}}</span></div>{{end}}
+    <main id="content" class="screen">{{template "content" .}}</main>
+  </div>
+</div>
+</body>
+</html>{{end}}

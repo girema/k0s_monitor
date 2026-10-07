@@ -1,0 +1,150 @@
+{{define "content"}}{{$d := .Data}}{{$st := $d.State}}{{$c := .Cluster.Name}}{{$basic := .Basic}}
+<div class="page-head">
+  <div>
+    <h1>k0s system</h1>
+    <div class="sub">{{if $basic}}The servers that run the cluster itself (its control plane), its database, and k0s's own parts{{else}}Each controller asked directly: API server readyz and livez, serving certificate, k0s controller leases, etcd, and the kube-system components{{end}}</div>
+  </div>
+</div>
+{{if eq $st.Status "unreachable"}}<div class="notice bad"><i class="ic crit">✕</i><span>{{if $basic}}The cluster can't be reached. This is the last known state.{{else}}Unreachable: what you see is stale.{{end}} {{errorText $st.Error}}</span></div>{{end}}
+{{template "fallback" (dict "st" $st "basic" $basic)}}
+{{with $d.NotAsked}}<div class="notice info"><i class="ic info">i</i><span>{{.}}</span></div>{{end}}
+
+<div class="stat-row">
+  <div class="stat"><div class="lab">{{if and (not $d.Single) (lt $d.Alive $d.Expected)}}<i class="ic crit" aria-hidden="true">!</i>{{end}}{{if $basic}}Control plane servers{{else}}Controllers{{end}}</div><div class="val">{{$d.ControllersText}}</div><div class="foot">{{if $d.Single}}{{if $basic}}one server runs the control plane{{else}}single controller: no leases{{end}}{{else}}{{if $basic}}running{{else}}running, by their leases{{end}}{{end}}</div></div>
+  <div class="stat"><div class="lab">{{if lt $d.Ready $d.Reached}}<i class="ic crit" aria-hidden="true">!</i>{{end}}{{if $basic}}Cluster API{{else}}API servers ready{{end}}</div><div class="val">{{if $d.Reached}}{{$d.Ready}} of {{$d.Reached}}{{else}}—{{end}}</div><div class="foot">{{if $d.Reached}}{{if $basic}}answer that they work{{else}}readyz and livez pass{{end}}{{else}}not asked yet{{end}}</div></div>
+  <div class="stat"><div class="lab">{{if or $d.EtcdBad $d.Etcd.Cls}}<i class="ic warn" aria-hidden="true">▲</i>{{end}}{{if $basic}}Database{{else}}etcd{{end}}</div><div class="val{{if not $d.EtcdKnown}} small-val{{end}}">{{if $d.EtcdKnown}}{{$d.Etcd.Pct}}%{{else if $d.Reached}}{{if $d.EtcdBad}}not ready{{else}}ready{{end}}{{else}}—{{end}}</div><div class="foot">{{if $d.EtcdKnown}}{{$d.EtcdText}}{{if $d.EtcdBad}} · not ready on {{$d.EtcdBad}}{{end}}{{else if $d.Reached}}size not reported{{else}}not asked yet{{end}}</div></div>
+  <div class="stat"><div class="lab">{{if and $d.CertIcon (ne $d.CertIcon "good")}}<i class="ic {{$d.CertIcon}}" aria-hidden="true">!</i>{{end}}Certificates</div><div class="val small-val">{{if $d.CertSoonest}}{{if $basic}}{{$d.CertSoonestPlain}}{{else}}{{$d.CertSoonest}}{{end}}{{else}}—{{end}}</div><div class="foot">{{if $basic}}the first to end{{else}}API server certificate expiring first{{end}}</div></div>
+  <div class="stat"><div class="lab">{{if lt $d.SystemOK $d.Systems}}<i class="ic warn" aria-hidden="true">▲</i>{{end}}{{if $basic}}k0s's own parts{{else}}kube-system{{end}}</div><div class="val">{{$d.SystemOK}} of {{$d.Systems}}</div><div class="foot">{{if $basic}}run normally{{else}}components without problems{{end}}</div></div>
+</div>
+
+<div class="card flush">
+  <div class="card-head"><h2>{{if $basic}}Control plane servers{{else}}Controllers{{end}}</h2>{{if $d.Asked}}<span class="sub">checked {{agoPlain $d.AskedAt}}{{if and $d.Server (not $basic)}} · clients use {{$d.Server}}{{end}}</span>{{end}}</div>
+  <div class="tbl-wrap">
+  <table class="t ctrls">
+    {{if $basic}}
+    <thead><tr><th>Server</th><th>Working</th><th>Running</th><th>Certificate</th><th>Problem</th></tr></thead>
+    <tbody>
+    {{range $d.Controllers}}<tr>
+      <td><b class="res">{{.Name}}</b>{{if ne .Name .Address}}<div class="res-sub">{{.Address}}</div>{{end}}</td>
+      <td><span class="st"><i class="ic {{.Icon}}" aria-hidden="true">{{.Mark}}</i>{{.HealthPlain}}</span>{{with .Error}}<div class="res-sub">{{.}}</div>{{end}}</td>
+      <td><span class="st"><i class="ic {{.LeaseIcon}}" aria-hidden="true">{{if eq .LeaseIcon "good"}}✓{{else if eq .LeaseIcon "crit"}}✕{{else}}i{{end}}</i>{{.LeasePlain}}</span></td>
+      <td class="small">{{if .CertPlain}}<span class="st"><i class="ic {{.CertIcon}}" aria-hidden="true">{{if eq .CertIcon "good"}}✓{{else}}!{{end}}</i>{{.CertPlain}}</span>{{else}}<span class="muted">—</span>{{end}}</td>
+      <td class="small">{{with .Top}}{{template "urgchip" .Priority}} <a href="/c/{{$c}}/problems/{{.ID}}">{{.Plain.Title}}</a>{{else}}<span class="muted">—</span>{{end}}</td>
+    </tr>{{else}}<tr><td colspan="5"><div class="empty">No control plane servers known yet.</div></td></tr>{{end}}
+    </tbody>
+    {{else}}
+    <thead><tr><th>Controller</th><th>API server</th><th>Lease</th><th>Version</th><th>Certificate</th><th>Found by</th><th>Problem</th></tr></thead>
+    <tbody>
+    {{range $d.Controllers}}<tr>
+      <td><b class="res">{{.Name}}</b>{{if .InUse}} <span class="tag quiet" title="k0s-monitor reads the cluster through this controller">in use</span>{{end}}{{if ne .Name .Address}}<div class="res-sub mono">{{.Address}}</div>{{end}}</td>
+      <td><span class="st"><i class="ic {{.Icon}}" aria-hidden="true">{{.Mark}}</i>{{.Health}}</span>{{with .Failing}}<div class="res-sub mono">{{.}}</div>{{end}}{{with .Error}}<div class="res-sub">{{.}}</div>{{end}}</td>
+      <td class="nowrap"><span class="st"><i class="ic {{.LeaseIcon}}" aria-hidden="true">{{if eq .LeaseIcon "good"}}✓{{else if eq .LeaseIcon "crit"}}✕{{else}}i{{end}}</i>{{.Lease}}</span></td>
+      <td class="small mono nowrap">{{or .Version "—"}}{{with .K0sVersion}}<div class="res-sub">k0s {{.}}</div>{{end}}</td>
+      <td class="small">{{if .Cert}}<span class="st"><i class="ic {{.CertIcon}}" aria-hidden="true">{{if eq .CertIcon "good"}}✓{{else}}!{{end}}</i>{{.Cert}}</span>{{with .CertNote}}<div class="res-sub">▲ {{.}}</div>{{end}}{{else}}<span class="muted">—</span>{{end}}</td>
+      <td class="small">{{.From}}</td>
+      <td class="small">{{with .Top}}{{template "prichip" .Priority}} <a href="/c/{{$c}}/problems/{{.ID}}">{{.Title}}</a>{{else}}<span class="muted">—</span>{{end}}</td>
+    </tr>{{else}}<tr><td colspan="7"><div class="empty">No controllers known yet.</div></td></tr>{{end}}
+    </tbody>
+    {{end}}
+  </table>
+  </div>
+</div>
+{{with $d.ClientCert}}{{if not $basic}}<div class="small muted mt8">{{.}}</div>{{end}}{{end}}
+
+<div class="grid mt16">
+  <div class="card s6">
+    <div class="card-head"><h2>{{if $basic}}Problems with the cluster itself{{else}}Control plane issues{{end}}</h2></div>
+    {{range $d.Problems}}<div class="bitem">{{if $basic}}{{template "urgchip" .Priority}}{{else}}{{template "prichip" .Priority}}{{end}}<div><div class="bt"><a href="/c/{{$c}}/problems/{{.ID}}">{{if $basic}}{{.Plain.Title}}{{else}}{{.Title}}{{end}}</a></div>{{if not $basic}}<div class="small muted"><code>{{.RuleID}}</code> · <span class="mono">{{ref .Resource}}</span></div>{{end}}</div></div>
+    {{else}}<div class="empty"><p>{{if $basic}}Nothing wrong with the cluster itself.{{else}}No control plane issues.{{end}}</p></div>{{end}}
+  </div>
+  <div class="card s6">
+    <div class="card-head"><h2>{{if $basic}}What's in the database{{else}}etcd objects{{end}}</h2>{{if $d.EtcdKnown}}<span class="sub">{{$d.EtcdText}}</span>{{end}}</div>
+    {{if $d.Objects}}<table class="t"><thead><tr><th>{{if $basic}}Kind{{else}}Resource{{end}}</th><th class="r">{{if $basic}}How many{{else}}Objects{{end}}</th></tr></thead><tbody>
+    {{range $d.Objects}}<tr><td class="mono small">{{.Resource}}</td><td class="r">{{printf "%.0f" .Count}}</td></tr>{{end}}
+    </tbody></table>{{else}}<div class="small muted">{{if $d.Reached}}The API server doesn't report object counts.{{else}}Not read yet.{{end}}</div>{{end}}
+  </div>
+</div>
+
+<div class="grid mt16">
+  <div class="card s6" id="versions">
+    <div class="card-head"><h2>{{if $basic}}Software version{{else}}k0s versions{{end}}</h2>{{with $d.WantVersion}}<span class="sub">{{if $basic}}should be {{$d.WantPlain}}{{else}}expected <span class="mono">{{.}}</span> ({{$d.WantFrom}}){{end}}</span>{{end}}</div>
+    {{if $d.Versions}}
+    {{if $basic}}<p class="small sec">{{if eq $d.VersionsOK $d.Nodes}}All {{$d.Nodes}} servers run the same version{{with $d.WantPlain}} ({{.}}){{end}}.{{else}}{{sub $d.Nodes $d.VersionsOK}} of {{$d.Nodes}} servers run another version than {{$d.WantPlain}}.{{end}}</p>{{end}}
+    <table class="t"><thead><tr><th>{{if $basic}}Version{{else}}k0s{{end}}</th><th>{{if $basic}}Servers{{else}}Nodes and controllers{{end}}</th></tr></thead><tbody>
+    {{range $d.Versions}}<tr>
+      <td class="nowrap"><span class="st"><i class="ic {{if .OK}}good{{else}}crit{{end}}" aria-hidden="true">{{if .OK}}✓{{else}}✕{{end}}</i><span class="{{if not $basic}}mono{{end}}">{{if $basic}}{{.Plain}}{{else}}{{.Version}}{{end}}</span></span></td>
+      <td class="small">{{join .Nodes ", "}}</td>
+    </tr>{{end}}
+    </tbody></table>
+    {{if not $basic}}<p class="small muted mt8">Controllers from their ControlNode; other nodes from their kubelet, which reports only the Kubernetes part (v1.36.4+k0s). Set the expected version in <a href="/c/{{$c}}/settings#k0s">Connection &amp; settings</a>.</p>{{end}}
+    {{else}}<div class="small muted">{{if $basic}}Not known yet.{{else}}No versions reported yet.{{end}}</div>{{end}}
+  </div>
+  <div class="card s6" id="updates">
+    <div class="card-head"><h2>{{if $basic}}Software updates{{else}}Updates (Autopilot){{end}}</h2></div>
+    {{range $d.Updates}}
+    <div class="bitem upd"><i class="ic {{.Icon}}" aria-hidden="true">{{.Mark}}</i><div><div class="bt">{{if $basic}}Update{{with .PlainVersion}} to {{.}}{{end}}: {{.State}}{{else}}Plan <span class="mono">{{.Name}}</span>{{with .Version}} → <span class="mono">{{.}}</span>{{end}} · {{.State}}{{end}}</div>
+      <div class="small muted">{{if $basic}}started{{else}}made{{end}} {{agoPlain .Created}}{{with .Top}} · <a href="/c/{{$c}}/problems/{{.ID}}">{{if $basic}}{{.Plain.Title}}{{else}}{{.Title}}{{end}}</a>{{end}}</div>
+      {{if .Targets}}<table class="t mt8"><tbody>{{range .Targets}}<tr><td class="small"><b>{{.Name}}</b>{{if not $basic}} <span class="muted">{{.Role}}</span>{{end}}</td><td class="small"><span class="st"><i class="ic {{.Icon}}" aria-hidden="true">{{.Mark}}</i>{{.State}}</span></td><td class="small muted nowrap">{{if not .Updated.IsZero}}{{agoPlain .Updated}}{{end}}</td></tr>{{end}}</tbody></table>{{end}}
+    </div></div>
+    {{else}}<div class="empty"><p>{{if $basic}}No update is running.{{else}}No Autopilot plans: no update running or left over.{{end}}</p></div>{{end}}
+  </div>
+</div>
+
+<div class="card flush mt16" id="addons">
+  <div class="card-head"><h2>{{if $basic}}Extra parts installed with the cluster{{else}}Add-ons (Helm charts){{end}}</h2><span class="sub">{{if $basic}}installed by k0s from the product's settings{{else}}k0s installs these from spec.extensions.helm; values that look secret are hidden{{end}}</span></div>
+  {{if $d.Addons}}<div class="tbl-wrap">
+  <table class="t addons">
+    <thead><tr><th>{{if $basic}}Part{{else}}Add-on{{end}}</th>{{if not $basic}}<th>Chart</th><th>Namespace</th>{{end}}<th>{{if $basic}}State{{else}}Status{{end}}</th>{{if not $basic}}<th class="r">Updated</th>{{end}}<th>Problem</th></tr></thead>
+    {{range $d.Addons}}<tbody><tr>
+      <td><b class="res">{{.Name}}</b>{{if not $basic}}{{with .Release}}<div class="res-sub">release {{.}}</div>{{end}}{{end}}</td>
+      {{if not $basic}}<td class="small mono">{{.Chart}}{{with .Version}} {{.}}{{end}}{{with .AppVersion}}<div class="res-sub">app {{.}}</div>{{end}}</td><td class="small">{{.Namespace}}</td>{{end}}
+      <td><span class="st"><i class="ic {{.Icon}}" aria-hidden="true">{{.Mark}}</i>{{if $basic}}{{.Plain}}{{else}}{{.Status}}{{end}}</span></td>
+      {{if not $basic}}<td class="r small nowrap">{{if not .Updated.IsZero}}{{agoPlain .Updated}}{{else}}—{{end}}</td>{{end}}
+      <td class="small">{{with .Top}}{{if $basic}}{{template "urgchip" .Priority}} <a href="/c/{{$c}}/problems/{{.ID}}">{{.Plain.Title}}</a>{{else}}{{template "prichip" .Priority}} <a href="/c/{{$c}}/problems/{{.ID}}">{{.Title}}</a>{{end}}{{else}}<span class="muted">—</span>{{end}}</td>
+    </tr>
+    {{if and (not $basic) (or .Error .Values .ValuesUnreadable .Repository)}}<tr class="child"><td colspan="6"><details class="tv"><summary>Details</summary><dl class="kv2 small">
+      {{with .Repository}}<dt>Repository</dt><dd class="mono">{{.}}</dd>{{end}}
+      {{with .Error}}<dt>Error</dt><dd class="mono wrapany">{{.}}</dd>{{end}}
+      {{if .ValuesUnreadable}}<dt>Values</dt><dd class="muted">not shown: they aren't valid YAML</dd>{{else}}{{with .Values}}<dt>Values</dt><dd><pre class="term wrap">{{.}}</pre></dd>{{end}}{{end}}
+    </dl></details></td></tr>{{end}}
+    </tbody>{{end}}
+  </table>
+  </div>{{else}}<div class="empty"><p>{{if not $d.AddonsRead}}{{if $basic}}Not known yet.{{else}}The add-ons haven't been read yet, or k0s-monitor may not read Chart objects.{{end}}{{else if $basic}}No extra parts are installed with the cluster.{{else}}No Helm add-ons: the k0s configuration has no spec.extensions.helm charts.{{end}}</p></div>{{end}}
+</div>
+
+{{if not $basic}}
+<div class="card mt16" id="config">
+  <div class="card-head"><h2>Cluster configuration</h2>{{with $d.Config.From}}<span class="sub">from {{.}}</span>{{end}}</div>
+  {{with $d.Config}}{{if .From}}
+  {{if .Uploaded}}<p class="small sec">k0s keeps its configuration on the controllers and publishes it in the cluster only with dynamic configuration, so this is the file uploaded when the cluster was added. The cluster may have changed since.</p>{{end}}
+  <dl class="kv2 settings">{{range .Settings}}<dt>{{.Name}}</dt><dd><span class="mono">{{.Value}}</span>{{with .Means}}<div class="small muted">{{.}}</div>{{end}}</dd>{{end}}</dl>
+  {{if .Profiles}}<h3 class="mt16">Worker profiles</h3><p class="small sec">Kubelet settings for the workers that start with that profile (k0s worker --profile). The default profile's settings are k0s's defaults.</p>
+  {{range .Profiles}}<div class="mt8"><b class="mono">{{.Name}}</b><dl class="kv2 settings small">{{range .Settings}}<dt class="mono">{{.Name}}</dt><dd><span class="mono">{{.Value}}</span>{{with .Means}}<div class="muted">{{.}}</div>{{end}}</dd>{{end}}</dl></div>{{end}}{{end}}
+  {{if .Diffs}}<h3 class="mt16">Different from {{.DiffWith}}</h3><div class="tbl-wrap"><table class="t"><thead><tr><th>Setting</th><th>Uploaded</th><th>In the cluster</th></tr></thead><tbody>
+    {{range .Diffs}}<tr><td class="mono small">{{.Path}}</td><td class="mono small">{{.Uploaded}}</td><td class="mono small">{{.Cluster}}</td></tr>{{end}}
+  </tbody></table></div>{{else if .DiffWith}}<p class="small sec mt12">The cluster's configuration matches {{.DiffWith}}.</p>{{end}}
+  {{with .YAML}}<details class="tv mt12"><summary>The whole configuration</summary><pre class="term mt8">{{.}}</pre></details>{{end}}
+  {{else}}
+  <p class="small sec">k0s keeps its configuration on the controllers and publishes it in the cluster only with dynamic configuration (k0s controller --enable-dynamic-config), which this cluster doesn't use. To see it here, add the cluster with its k0s.yaml or k0sctl.yaml; or read it on a controller:</p>
+  <div class="cmd"><span>sudo cat /etc/k0s/k0s.yaml</span><button type="button" data-copy="sudo cat /etc/k0s/k0s.yaml">Copy</button></div>
+  {{end}}{{end}}
+</div>
+{{end}}
+
+<div class="card flush mt16">
+  <div class="card-head"><h2>{{if $basic}}k0s's own parts{{else}}kube-system components{{end}}</h2><span class="end"><a href="/c/{{$c}}/apps?ns=kube-system{{if $basic}}&amp;system=1{{end}}">{{if $basic}}See them in Apps{{else}}Open in Workloads{{end}} →</a></span></div>
+  <div class="tbl-wrap">
+  <table class="t">
+    <thead><tr><th>{{if $basic}}Part{{else}}Workload{{end}}</th><th>{{if $basic}}How it runs{{else}}Status{{end}}</th><th class="r">{{if $basic}}Parts{{else}}Ready{{end}}</th><th>Problem</th></tr></thead>
+    <tbody>
+    {{range $d.System}}<tr>
+      <td>{{if not $basic}}<span class="kind">{{.Short}}</span> {{end}}<a class="res" href="/c/{{$c}}/apps?ns=kube-system{{if $basic}}&amp;system=1{{end}}#{{.Anchor}}">{{.Name}}</a></td>
+      <td><span class="st"><i class="ic {{.Icon}}" aria-hidden="true">{{.Mark}}</i>{{if $basic}}{{.Plain}}{{else}}{{.Status}}{{end}}</span></td>
+      <td class="r mono">{{if $basic}}{{len .Pods}}{{else}}{{.Ready}}{{end}}</td>
+      <td class="small">{{with .Top}}{{if $basic}}{{template "urgchip" .Priority}} <a href="/c/{{$c}}/problems/{{.ID}}">{{.Plain.Title}}</a>{{else}}{{template "prichip" .Priority}} <a href="/c/{{$c}}/problems/{{.ID}}">{{.Title}}</a>{{end}}{{else}}<span class="muted">—</span>{{end}}</td>
+    </tr>{{else}}<tr><td colspan="4"><div class="empty">Nothing in kube-system.</div></td></tr>{{end}}
+    </tbody>
+  </table>
+  </div>
+</div>
+{{end}}

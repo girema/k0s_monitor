@@ -1,0 +1,142 @@
+{{define "content"}}{{$d := .Data}}
+<div class="page-head"><div><h1>Settings</h1><div class="sub">k0s-monitor on this jump host</div></div></div>
+{{with $d.Message}}<div class="notice good"><i class="ic good">✓</i><span>{{.}}</span></div>{{end}}
+{{with $d.Error}}<div class="notice bad"><i class="ic crit">!</i><span>{{.}}</span></div>{{end}}
+<div class="grid">
+  {{if not .NoAuth}}
+  <div class="card s6">
+    <div class="card-head"><h2>Change your password</h2><span class="sub">signed in as {{.User}}</span></div>
+    <form method="post" action="/settings/password" class="form">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <div class="form-row"><label for="cur">Current password</label><input class="input" id="cur" type="password" name="current" autocomplete="current-password" required></div>
+      <div class="form-row"><label for="new">New password</label><input class="input" id="new" type="password" name="new" autocomplete="new-password" minlength="10" required><div class="help">At least 10 characters. Your other browsers are signed out.</div></div>
+      <div class="form-row"><label for="confirm">New password again</label><input class="input" id="confirm" type="password" name="confirm" autocomplete="new-password" minlength="10" required></div>
+      <div><button class="btn primary" type="submit">Change password</button></div>
+    </form>
+  </div>
+  {{end}}
+  <div class="card s6">
+    <div class="card-head"><h2>Display</h2></div>
+    <dl class="kv2">
+      <dt>Colors</dt><dd>{{if eq .Theme "dark"}}dark{{else if eq .Theme "light"}}light{{else}}same as the computer{{end}} <span class="small muted">(this browser; switch with ◐ at the top)</span></dd>
+      <dt>Menu on the left</dt><dd>{{if .NavHidden}}hidden{{else}}shown{{end}} <span class="small muted">(this browser; switch with the button at the top left)</span></dd>
+      <dt>Mode for new browsers</dt><dd>{{$d.DefaultMode}} <span class="small muted">(this browser: {{.Mode}}; switch with Basic / Full at the top)</span></dd>
+      <dt>Notifications</dt><dd>{{join $d.Notify ", "}} <span class="small muted">(set <code>ui.notify</code> in the configuration file)</span></dd>
+      <dt>Desktop notifications</dt><dd>Turn on in the bell menu. Edge and Chrome then show "Fix now" problems while this page is open.</dd>
+      <dt>Who may open k0s-monitor</dt><dd>{{if $d.Open}}<span class="st"><i class="ic warn" aria-hidden="true">▲</i>every computer that can reach this address</span> <span class="small muted">(limit it to your PCs with <code>allowFrom</code> in the configuration file)</span>{{else if $d.AllowFrom}}{{join $d.AllowFrom ", "}} <span class="small muted">(and this machine; <code>allowFrom</code>)</span>{{else}}this machine only{{end}}</dd>
+    </dl>
+  </div>
+  <div class="card s12" id="secrets">
+    <div class="card-head"><h2>Secret values</h2><span class="sub">the passwords, keys and certificates that apps keep in Secrets</span></div>
+    <dl class="kv2"><dt>State</dt><dd>{{if $d.SecretValues}}<span class="st"><i class="ic warn" aria-hidden="true">▲</i>shown on request</span>{{else}}never shown{{end}}</dd></dl>
+    <p class="small sec mt8">When this is on, {{if .NoAuth}}anyone who opens k0s-monitor on this machine{{else}}everyone who can sign in here{{end}} can see the values of Secrets, in clusters where k0s-monitor may read Secrets (each cluster's Connection page says whether it may). A value is shown only on the Secret's page, when someone clicks Show (or Show all). Each value shown is recorded in the audit log below{{if not .NoAuth}} with their name{{end}}. Values never appear in lists or other pages. Service account and bootstrap tokens, which are credentials to the cluster itself, are never shown.</p>
+    <form method="post" action="/settings/secrets#secrets" class="btnrow mt12"{{if not $d.SecretValues}} data-confirm-submit="Let {{if .NoAuth}}anyone who opens k0s-monitor here{{else}}everyone who signs in here{{end}} see the values of Secrets?"{{end}}>
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <input type="hidden" name="on" value="{{if $d.SecretValues}}0{{else}}1{{end}}">
+      <button class="btn" type="submit">{{if $d.SecretValues}}Never show Secret values{{else}}Show Secret values on request{{end}}</button>
+    </form>
+  </div>
+  {{with $d.AI}}
+  <div class="card s12" id="ai">
+    <div class="card-head"><h2>Explain with AI</h2><span class="sub">a language model explains a problem and how to fix it, on the problem's page</span><span class="end">{{if .Ready}}<span class="st"><i class="ic good" aria-hidden="true">✓</i>on: {{.Model}}</span>{{else}}<span class="st muted">off</span>{{end}}</span></div>
+    {{with .Error}}<div class="notice bad"><i class="ic crit" aria-hidden="true">!</i><span>{{.}}</span></div>{{end}}
+    {{with .Message}}<div class="notice good"><i class="ic good" aria-hidden="true">✓</i><span>{{.}}</span></div>{{end}}
+    <p class="small sec">It works with any API that follows OpenAI's chat completions: a model on a machine of yours (Ollama, LM Studio, llama.cpp, vLLM), where nothing leaves your network, or a provider's (OpenAI, Anthropic, DeepSeek, Qwen, Gemini, Mistral, OpenRouter). When someone asks, k0s-monitor sends that one problem: its description and evidence, the steps it suggests, the problems it causes, its Prometheus alerts, warning events and the log lines of the last crash. Values of secret-looking names, tokens and passwords are replaced first; Secret values are never in it. Anyone can look at what is sent before sending it, and each request is recorded in the audit log below.</p>
+    <form method="post" action="/settings/ai#ai" class="form mt12" data-ai-settings>
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <label class="check-line"><input type="checkbox" name="enabled"{{if .Enabled}} checked{{end}}><span><b>Offer explanations on problem pages</b></span></label>
+      <div class="ai-grid">
+        <div class="form-row"><label for="ai-provider">Provider</label>
+          <select class="input" id="ai-provider" name="provider" data-ai-provider>{{range $.Data.Presets}}<option value="{{.ID}}" data-url="{{.BaseURL}}" data-note="{{.Note}}"{{if eq .ID $.Data.AI.Provider}} selected{{end}}>{{.Name}}</option>{{end}}</select>
+          <div class="help" data-ai-note>{{range $.Data.Presets}}{{if eq .ID $.Data.AI.Provider}}{{.Note}}{{end}}{{end}}</div></div>
+        <div class="form-row"><label for="ai-url">Address</label>
+          <input class="input mono" id="ai-url" name="baseUrl" value="{{.BaseURL}}" placeholder="https://api.example.com/v1" data-ai-url>
+          <div class="help">The API's address, up to <span class="mono">/v1</span>. A model on another machine: that machine's address, such as <span class="mono">http://10.0.0.20:11434/v1</span>. The jump host must reach it; <span class="mono">HTTPS_PROXY</span> applies.</div></div>
+        <div class="form-row"><label for="ai-key">API key</label>
+          <input class="input" id="ai-key" type="password" name="apiKey" autocomplete="off" placeholder="{{if .HasKey}}stored: leave empty to keep it{{else}}none{{end}}">
+          <div class="help">Stored encrypted on this machine, like the clusters' credentials, and never shown again. Local servers need none.</div>
+          {{if .HasKey}}<label class="check-line"><input type="checkbox" name="removeKey"><span>Remove the stored key</span></label>{{end}}</div>
+        <div class="form-row"><label for="ai-model">Model</label>
+          <input class="input mono" id="ai-model" name="model" value="{{.Model}}" list="ai-models" autocomplete="off">
+          <datalist id="ai-models">{{range .Models}}<option value="{{.}}">{{end}}</datalist>
+          <div class="help">Its name as the API knows it. <b>Test</b> lists the models the API offers.</div>
+          {{with .Models}}<div class="small sec wrapany">Offered: {{join . ", "}}</div>{{end}}</div>
+        <div class="form-row"><label for="ai-lang">Language of the answers</label>
+          <input class="input" id="ai-lang" name="language" value="{{.Language}}" placeholder="English"></div>
+        <div class="form-row"><label for="ai-tokens">Longest answer, in tokens</label>
+          <input class="input" id="ai-tokens" type="number" min="0" max="200000" name="maxTokens" value="{{if .MaxTokens}}{{.MaxTokens}}{{end}}" placeholder="the provider's default"></div>
+        <div class="form-row"><label for="ai-timeout">Time limit, in seconds</label>
+          <input class="input" id="ai-timeout" type="number" min="0" max="1800" name="timeoutSeconds" value="{{if .TimeoutSeconds}}{{.TimeoutSeconds}}{{end}}" placeholder="180">
+          <div class="help">Local models on a CPU can take minutes.</div></div>
+      </div>
+      <div>
+        <label class="check-line"><input type="checkbox" name="maskIPs"{{if .MaskIPs}} checked{{end}}><span>Hide IP addresses (they become ip-1, ip-2, …)</span></label>
+        <label class="check-line"><input type="checkbox" name="logs"{{if not .NoLogs}} checked{{end}}><span>Include the log lines of the last crash (secret-looking values hidden)</span></label>
+      </div>
+      <div class="btnrow"><button class="btn primary" type="submit" name="action" value="save">Save</button><button class="btn" type="submit" name="action" value="test">Test</button></div>
+    </form>
+  </div>
+  {{end}}
+  {{with $d.Packs}}{{if .On}}
+  <div class="card s12" id="packs">
+    <div class="card-head"><h2>Product packs</h2><span class="sub">checks, app names, advice and links for your products, written as YAML</span><span class="end"><a href="/settings/packs/example.yaml">Example pack</a></span></div>
+    {{range .Problems}}<div class="notice bad"><i class="ic crit" aria-hidden="true">!</i><span><b>Not used:</b> <span class="mono">{{.Source}}</span>: {{.Err}}</span></div>{{end}}
+    {{if .Packs}}<div class="tbl-wrap"><table class="t packs"><thead><tr><th>Pack</th><th>For</th><th>Adds</th><th>From</th><th></th></tr></thead><tbody>
+    {{range .Packs}}<tr>
+      <td><b>{{.Name}}</b>{{with .Version}} <span class="small sec">{{.}}</span>{{end}}{{with .Description}}<div class="small sec">{{.}}</div>{{end}}
+        {{with .K0sVersion}}<div class="small">k0s version: <span class="mono">{{.}}</span></div>{{end}}{{with .Support}}<div class="small">Support: {{.}}</div>{{end}}
+        {{range .QueryErrors}}<div class="small"><i class="ic warn" aria-hidden="true">▲</i> Query refused: {{.}}</div>{{end}}</td>
+      <td class="small">{{range $i, $c := .For}}{{if $i}}, {{end}}<span class="nowrap">{{$c}}</span>{{end}}</td>
+      <td class="small">{{if .Adds}}{{.Adds}}{{else}}<span class="muted">nothing yet</span>{{end}}</td>
+      <td class="small mono">{{.Source}}</td>
+      <td class="r"><div class="user-actions"><a class="btn sm" href="/settings/packs/{{.Name}}.yaml">Download</a>{{if .Uploaded}}<form method="post" action="/settings/packs/{{.Name}}/remove#packs" class="inline" data-confirm-submit="Remove the pack {{.Name}}? Its checks, names and advice go away."><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn sm" type="submit">Remove</button></form>{{end}}</div></td>
+    </tr>{{end}}
+    </tbody></table></div>{{else}}<p class="small sec">No product packs yet. A pack is a YAML file in which your team describes a product: checks such as "the database volume stays below 70% full", friendly names for its apps, advice for problems, and links to your documentation. Start from the example pack.</p>{{end}}
+    <form method="post" action="/settings/packs#packs" enctype="multipart/form-data" class="btnrow mt12">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <input class="input file" type="file" name="pack" accept=".yaml,.yml" required aria-label="Pack file">
+      <button class="btn primary" type="submit">Upload a pack</button>
+    </form>
+    <div class="small sec mt8">{{with .Dir}}Packs in <span class="mono">{{.}}</span> on this machine are read when k0s-monitor starts, and when you
+      <form method="post" action="/settings/packs/reload#packs" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="linkbtn" type="submit">read the directory again</button></form>.
+      An uploaded pack with the name of one there is refused.{{end}}</div>
+  </div>
+  {{end}}{{end}}
+  {{if not .NoAuth}}
+  <div class="card s12" id="users">
+    <div class="card-head"><h2>Users</h2><span class="sub">everyone can do everything, including managing users; the audit log below shows who did what</span></div>
+    <div class="tbl-wrap"><table class="t users"><thead><tr><th>User</th><th>Signed in now</th><th>Last sign-in</th><th>Added</th><th></th></tr></thead><tbody>
+    {{range $d.Users}}<tr>
+      <td><b>{{.Name}}</b>{{if .Me}} <span class="tag">you</span>{{end}}</td>
+      <td class="small">{{if .SignedIn}}{{plural .SignedIn "browser"}}{{else}}<span class="muted">no</span>{{end}}</td>
+      <td class="small">{{.LastSignIn}}</td>
+      <td class="small">{{.Created}}</td>
+      <td class="r">{{if not .Me}}<div class="user-actions">
+        <details class="menu"><summary class="btn sm">Set password ▾</summary>
+          <form method="post" action="/settings/users/{{.Name}}/password" class="menu-list menu-form"><input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <label class="small" for="pw-{{.Name}}">New password for {{.Name}}</label>
+            <input class="input" id="pw-{{.Name}}" type="password" name="password" autocomplete="new-password" minlength="10" required>
+            <input class="input" type="password" name="confirm" autocomplete="new-password" minlength="10" required aria-label="The same password again" placeholder="the same again">
+            <div class="help">{{.Name}} is signed out everywhere and signs in with this one.</div>
+            <button class="btn primary sm" type="submit">Set password</button></form></details>
+        <form method="post" action="/settings/users/{{.Name}}/remove" class="inline" data-confirm-submit="Remove {{.Name}}? They are signed out at once."><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn sm" type="submit">Remove</button></form>
+      </div>{{end}}</td>
+    </tr>{{end}}
+    </tbody></table></div>
+    <form method="post" action="/settings/users" class="form add-user mt16">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <div class="form-row"><label for="nu-name">Add a user</label><input class="input" id="nu-name" name="name" placeholder="user name, for example anna" pattern="[a-z][a-z0-9._\-]{0,31}" autocomplete="off" autocapitalize="none" spellcheck="false" required><div class="help">Lower-case letters, digits, dots, dashes or underscores.</div></div>
+      <div class="form-row"><label for="nu-pw">Password</label><input class="input" id="nu-pw" type="password" name="password" autocomplete="new-password" minlength="10" required></div>
+      <div class="form-row"><label for="nu-confirm">Password again</label><input class="input" id="nu-confirm" type="password" name="confirm" autocomplete="new-password" minlength="10" required></div>
+      <div><button class="btn primary" type="submit">Add user</button></div>
+    </form>
+  </div>
+  {{end}}
+  <div class="card s12">
+    <div class="card-head"><h2>Audit log</h2><span class="sub">sign-ins, clusters added or removed, acknowledgements, Secret values shown; newest first</span><span class="end"><a href="/api/v1/audit">JSON</a></span></div>
+    {{if $d.Audit}}<div class="tbl-wrap"><table class="t"><thead><tr><th>Time</th><th>Who</th><th>From</th><th>Action</th><th>Detail</th></tr></thead><tbody>
+    {{range $d.Audit}}<tr><td class="nowrap small">{{stamp .Time}}</td><td>{{.User}}</td><td class="mono small">{{.IP}}</td><td><code>{{.Action}}</code></td><td class="small">{{.Detail}}</td></tr>{{end}}
+    </tbody></table></div>{{else}}<div class="muted">Nothing recorded yet.</div>{{end}}
+  </div>
+</div>
+{{end}}

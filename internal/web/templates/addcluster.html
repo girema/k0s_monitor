@@ -1,0 +1,84 @@
+{{define "content"}}{{$d := .Data}}{{$basic := .Basic}}
+<div class="crumbs"><a href="/">All clusters</a> / add cluster</div>
+<div class="page-head">
+  <div>
+    <h1>Add cluster</h1>
+    <div class="sub">{{if $basic}}Upload the file you use to connect to the cluster. k0s-monitor only looks; it never changes anything.{{else}}Only HTTPS access to the API server (port 6443) is needed. Logs and all other data go through it.{{end}}</div>
+  </div>
+</div>
+{{if not $d.CanStore}}
+<div class="notice bad"><i class="ic crit">!</i><div><b>Clusters can't be added here yet.</b> The key that encrypts stored credentials is missing. On the jump host, run <code>sudo k0s-monitor init</code>, or list the cluster in the configuration file.</div></div>
+{{else if $d.Full}}
+<div class="notice warn"><i class="ic warn">▲</i><div><b>This instance already monitors 5 clusters</b>, the most it is sized for. Remove one first, or run a second instance.</div></div>
+{{else}}
+<div class="connect-layout" id="addCluster" data-no-refresh data-basic="{{$basic}}">
+  <div class="card">
+    <div class="card-head"><h2>{{if $basic}}Your cluster{{else}}Connection{{end}}</h2></div>
+    <div class="form">
+      <div class="field">
+        <label for="fileInput">1. Cluster file</label>
+        <label class="drop" id="drop">
+          <div class="drop-ic" aria-hidden="true">⇪</div>
+          <div><b>Drop files here</b> or <span class="link-like">choose files</span>
+            <input type="file" id="fileInput" multiple>
+            <div class="small muted mt8">{{if $basic}}Usually the product's <code>cluster.config</code>. You can add <code>k0sctl.yaml</code> or <code>k0s.yaml</code> too.{{else}}A kubeconfig (for example <code>cluster.config</code>), <code>k0sctl.yaml</code> or <code>k0s.yaml</code>. The type is detected from the content.{{end}}</div>
+          </div>
+        </label>
+        <details class="tv" id="pasteBox"><summary>…or paste the content</summary>
+          <textarea class="input mt8" id="pasteText" spellcheck="false" placeholder="apiVersion: v1&#10;kind: Config&#10;…"></textarea>
+          <div class="mt8"><button class="btn sm" type="button" id="pasteBtn">Read the pasted text</button></div>
+        </details>
+        <div id="files" class="mt8"></div>
+      </div>
+
+      <div id="afterImport" class="form hidden">
+        <div class="field hidden" id="ctxField"><label for="ctxSel">Context</label><select class="input" id="ctxSel"></select><div class="help">The kubeconfig has several; choose the cluster to add.</div></div>
+        <div class="field" id="serverField">
+          <label for="server">{{if $basic}}Address of the cluster{{else}}API server address{{end}}</label>
+          <input class="input mono" id="server" autocomplete="off" spellcheck="false">
+          <div class="help" id="serverHelp"></div>
+        </div>
+        <div class="field">
+          <label for="cname">2. Name</label>
+          <input class="input" id="cname" autocomplete="off" spellcheck="false" maxlength="63">
+          <div class="help">Lowercase letters, digits, "-", "." or "_". It is shown everywhere in k0s-monitor.</div>
+        </div>
+        {{if not $basic}}
+        <div class="field"><label for="crit">Criticality</label>
+          <select class="input" id="crit"><option value="">normal</option><option value="high">high: raises every priority</option><option value="low">low: lowers every priority (for example a lab)</option></select></div>
+        <div class="field"><label for="proxy">Proxy (optional)</label><input class="input mono" id="proxy" placeholder="socks5://bastion.lan:1080" autocomplete="off" spellcheck="false"><div class="help">Only if the jump host can't reach the cluster directly.</div></div>
+        {{end}}
+        <div class="field">
+          <label>3. Account for k0s-monitor</label>
+          <label class="radio on" id="radioRO"><input type="radio" name="account" value="readonly" checked>
+            <div><b>Create a read-only account</b> <span class="tag">recommended</span>
+              <div class="small sec mt8">The uploaded credentials are used once to create an account that can look but not change anything. Then they are thrown away.</div>
+              <details class="tv"><summary>What will be created</summary>
+                <div class="mt8">In the cluster: the ServiceAccount <code>kube-system/k0s-monitor</code>, the ClusterRole <code>k0s-monitor:reader</code> with its binding, and a token Secret; with the option below, also the ClusterRole <code>k0s-monitor:secrets</code> with its binding. A server-side dry run checks everything first. It can read pods, logs, nodes, storage and network objects; Secrets only with the option below. To remove it later:</div>
+                <div class="cmd multi"><span>{{$d.RemoveCommands}}</span><button type="button" data-copy="{{$d.RemoveCommands}}">Copy</button></div>
+              </details>
+            </div>
+          </label>
+          <div class="optline">
+            <label class="check-line"><input type="checkbox" id="tlsSecrets" checked><span>{{if $basic}}With the read-only account, also warn before the security certificates of apps expire{{else}}With the read-only account, also read Secrets: to warn before apps' certificates expire, and for the Secrets pages{{end}}</span></label>
+            <div class="small sec mt8">Kubernetes can't limit this to certificates: the account may then read every Secret, including passwords. k0s-monitor itself watches only TLS Secrets, keeps only their certificate and drops the private key. It reads another Secret only when someone opens it, and shows values only if that is turned on in Settings. You can turn this off later on the cluster's Connection page.</div>
+          </div>
+          <label class="radio{{if $basic}} hidden{{end}}" id="radioUp"><input type="radio" name="account" value="uploaded">
+            <div><b>Use the uploaded credentials as they are</b><div class="small sec mt8">Stored encrypted on this machine, but its key is here too: if the machine is taken over, so are these credentials. Only for credentials that can't change the cluster. You can switch to the read-only account later on the cluster's Connection page.</div></div>
+          </label>
+          <div class="help hidden" id="accountNote"></div>
+        </div>
+        <div class="btnrow"><button class="btn" type="button" id="testBtn">Test the connection</button><button class="btn primary" type="button" id="addBtn">Save and connect</button></div>
+        <div id="addError" class="hidden notice bad" role="alert"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="testCard">
+    <div class="card-head"><h2>Connection test</h2><span class="end" id="testSummary"></span></div>
+    <div id="testResult"><div class="muted">{{if $basic}}Add the file first. The test then checks that k0s-monitor can reach the cluster and sign in, and says how to fix anything that fails.{{else}}Add a kubeconfig first. The test checks DNS, the network, the certificate and whether the address is in it, the sign-in, k0s and the permissions, and gives the fix for each failure.{{end}}</div></div>
+  </div>
+</div>
+<script src="/static/addcluster.js" defer></script>
+{{end}}
+{{end}}

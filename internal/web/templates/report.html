@@ -1,0 +1,51 @@
+{{define "content"}}{{$d := .Data}}{{$c := $d.Cluster}}{{$basic := .Basic}}
+<div id="reportPage" data-no-refresh>
+<div class="page-head">
+  <div>
+    <h1>{{if $basic}}Report for support{{else}}Support bundle{{end}}</h1>
+    <div class="sub">{{if $basic}}A file you can send to {{with $d.Support}}{{.}}{{else}}your support team{{end}}, so they can see what's wrong without access to the cluster.{{else}}A redacted zip with an HTML summary, the open issues with evidence, describe output and log excerpts of the affected objects.{{with $d.Support}} Support: {{.}}.{{end}}{{end}}</div>
+  </div>
+</div>
+{{with $d.Error}}<div class="notice warn"><i class="ic warn" aria-hidden="true">▲</i><span>{{.}}</span></div>{{end}}
+{{if $d.Report}}{{$r := $d.Report}}
+<div class="card mb12" id="ready">
+  <div class="card-head"><h2>{{if $basic}}Your report is ready{{else}}Bundle ready{{end}}</h2><span class="sub">{{$r.FileName}} · {{$d.Size}} before compression · kept until {{$d.Expires}}</span></div>
+  <p class="small">{{if $basic}}It holds {{plural $r.Problems "problem"}}{{else}}{{plural $r.Problems "open root cause"}}{{end}}{{if $r.Suggestions}}, {{plural $r.Suggestions "suggestion"}}{{end}}, {{if $basic}}the details of {{plural $r.Described "part"}} of the cluster{{else}}describe output of {{plural $r.Described "object"}}{{end}} and {{plural $r.Logs "log excerpt"}}.
+  {{if $r.Options.MaskIPs}}{{if $r.MaskedIPs}}{{plural $r.MaskedIPs "IP address"}} replaced by names.{{else}}It holds no IP addresses.{{end}}{{else}}IP addresses are shown.{{end}}
+  Look through it below before you send it.</p>
+  <div class="notice good"><i class="ic good" aria-hidden="true">✓</i><span>{{if $basic}}No passwords or keys are in it: k0s-monitor doesn't read them for the report, and values that look secret are replaced by ••••••.{{else}}No Secret values: k0s-monitor reads none for it. Env values of secret-looking names, tokens, keys and URL passwords in describe output, logs and events are masked as ••••••.{{end}}</span></div>
+  {{with $r.Missing}}<details class="mb12"><summary class="small">{{plural (len .) "thing"}} couldn't be gathered</summary><ul class="small sec">{{range .}}<li>{{.}}</li>{{end}}</ul></details>{{end}}
+  <div class="btnrow"><a class="btn primary" href="/c/{{$c}}/report/{{$d.ID}}/download" download>{{if $basic}}Download the report{{else}}Download the bundle{{end}}</a><a class="btn" href="/c/{{$c}}/report">Prepare again</a></div>
+</div>
+<div class="grid">
+  <div class="card s8 flush">
+    <div class="card-head pad"><h2>Summary</h2><a class="small" href="/c/{{$c}}/report/{{$d.ID}}/files/index.html" target="_blank" rel="noopener">Open in a new tab</a></div>
+    <iframe class="report-frame" src="/c/{{$c}}/report/{{$d.ID}}/files/index.html" title="Summary of the report"></iframe>
+  </div>
+  <div class="card s4">
+    <div class="card-head"><h2>Files</h2><span class="sub">{{plural (len $r.Files) "file"}}</span></div>
+    {{range $d.Groups}}<h3 class="muted small mt12">{{.Title}}</h3>
+    <ul class="files">{{range .Files}}<li><a href="/c/{{$c}}/report/{{$d.ID}}/files/{{.Path}}" target="_blank" rel="noopener" title="{{.About}}">{{.Path}}</a> <span class="small sec">{{size .Size}}</span></li>{{end}}</ul>{{end}}
+  </div>
+</div>
+{{else}}
+<div class="card s8">
+  {{if $d.Unreachable}}<div class="notice warn"><i class="ic warn" aria-hidden="true">▲</i><span>{{if $basic}}The cluster can't be reached right now, so the report will hold what k0s-monitor last saw, without logs.{{else}}The cluster is unreachable: the bundle will hold the last known findings, without describe output and logs.{{end}}</span></div>{{end}}
+  <p>{{if $basic}}The report holds:{{else}}The bundle holds:{{end}}</p>
+  <ul class="small">
+    <li>{{if $basic}}a summary of the problems, with what k0s-monitor checked and what it suggests;{{else}}<code>index.html</code>: a summary of the open issues with evidence, likely cause and steps, and <code>problems.json</code>;{{end}}</li>
+    <li>{{if $basic}}the cluster's servers, versions and recent warnings;{{else}}<code>cluster.json</code>, <code>nodes.txt</code>, <code>events.txt</code> (warning events), <code>k0s.txt</code> (controllers, versions, add-ons) and the ClusterConfig if k0s publishes it;{{end}}</li>
+    <li>{{if $basic}}details and the end of the logs of the affected apps.{{else}}<code>kubectl describe</code> output of the affected objects, and the last 200 log lines of their containers (and of the run before the last restart).{{end}}</li>
+  </ul>
+  <p class="small sec">{{if $basic}}Passwords, tokens and keys are never in it. You see everything in it before you download it.{{else}}No Secret values are read. Env values of secret-looking names, tokens, keys and URL passwords are masked. You can look through every file before downloading.{{end}}</p>
+  <form method="post" action="/c/{{$c}}/report" data-busy="{{if $basic}}Preparing the report…{{else}}Gathering…{{end}}">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <label class="check-line"><input type="checkbox" name="logs"{{if $d.Options.Logs}} checked{{end}}><span>{{if $basic}}Include the end of the apps' logs{{else}}Include log excerpts{{end}}</span></label>
+    <label class="check-line"><input type="checkbox" name="maskIPs"{{if $d.Options.MaskIPs}} checked{{end}}><span>{{if $basic}}Hide IP addresses{{else}}Replace IP addresses with names (ip-1, ip-2, …), the same in every file{{end}}</span></label>
+    {{if not $basic}}<label class="check-line"><input type="checkbox" name="suggestions"{{if $d.Options.Suggestions}} checked{{end}}><span>Include good-practice suggestions</span></label>{{end}}
+    <div class="btnrow mt16"><button class="btn primary" type="submit">{{if $basic}}Prepare the report{{else}}Prepare the bundle{{end}}</button><span class="small sec">This can take up to a minute.</span></div>
+  </form>
+</div>
+{{end}}
+</div>
+{{end}}

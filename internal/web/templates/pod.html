@@ -1,0 +1,96 @@
+{{define "content"}}{{$d := .Data}}{{$p := $d.Pod}}{{$c := $d.Cluster}}{{$basic := .Basic}}
+<div id="podPage" data-no-refresh data-base="/api/v1/clusters/{{$c}}/pods/{{$p.Namespace}}/{{$p.Name}}">
+<div class="crumbs"><a href="/c/{{$c}}">{{$c}}</a> / <a href="/c/{{$c}}/apps">{{if $basic}}Apps{{else}}Workloads{{end}}</a> / {{with $d.Workload.Name}}{{if ne $d.Workload.Kind "Pod"}}<a href="/c/{{$c}}/apps?ns={{$p.Namespace}}&amp;q={{.}}">{{.}}</a> / {{end}}{{end}}{{if $basic}}app part{{else}}pod{{end}} {{$p.Name}}</div>
+<div class="pod-head">
+  <div class="grow">
+    {{if $basic}}
+      <h1 class="plainh">{{if $d.Workload.Name}}The app {{$d.Workload.Name}}{{else}}The app part {{$p.Name}}{{end}}</h1>
+      <div class="facts"><span>Part <b class="mono">{{$p.Name}}</b></span>{{if $p.Spec.NodeName}}<span>on server <b>{{$p.Spec.NodeName}}</b></span>{{end}}{{if ne $d.Age "—"}}<span>started <b>{{$d.Age}}</b> ago</span>{{end}}</div>
+    {{else}}
+      <h1>{{$p.Name}}</h1>
+      <div class="facts"><span>Namespace <b>{{$p.Namespace}}</b></span>{{if $d.Workload.Name}}<span>Owner <b class="mono">{{ref $d.Workload}}</b></span>{{end}}<span>Node <b>{{if $p.Spec.NodeName}}{{$p.Spec.NodeName}}{{else}}—{{end}}</b></span><span>Phase <b>{{$p.Status.Phase}}</b></span><span>IP <b>{{if $p.Status.PodIP}}{{$p.Status.PodIP}}{{else}}—{{end}}</b></span><span>QoS <b>{{$p.Status.QOSClass}}</b></span><span>Age <b>{{$d.Age}}</b></span></div>
+    {{end}}
+  </div>
+  <div class="actions"><a class="btn" href="/c/{{$c}}/report">{{if $basic}}Report for support{{else}}Support bundle{{end}}</a></div>
+</div>
+{{with $d.Stale}}<div class="notice warn"><i class="ic warn">▲</i><span>{{.}}</span></div>{{end}}
+
+{{if $basic}}
+<div class="pod-layout">
+  <div>
+    {{with $d.Main}}
+    <div class="card">
+      <div class="row mb12">{{template "urgchip" .Priority}}<b>{{.Plain.Title}}</b></div>
+      <div class="prose">
+        {{$g := newGloss}}<h3>What happened</h3><p>{{$g.Mark .Plain.WhatHappened}}</p>
+        {{with .Plain.Why}}<h3>Why</h3><p>{{$g.Mark .}}</p>{{end}}
+        <h3>How to fix it</h3><p>{{$g.Mark .Plain.WhatToDo}}</p>
+      </div>
+      {{template "steps" (dict "f" . "basic" true)}}
+      <div class="small mt12"><a href="/c/{{$c}}/problems/{{.ID}}">More about this problem</a></div>
+    </div>
+    {{else}}
+    <div class="notice good"><i class="ic good">✓</i><span>No problem was found for this app part.</span></div>
+    {{end}}
+    <div class="card mt16">
+      <div class="card-head"><h2>Log lines that matter</h2>{{with $d.LogSource}}<span class="sub">from {{.}}</span>{{end}}</div>
+      {{template "knownerrors" (dict "m" $d.Matches "basic" true)}}
+      {{if $d.Important}}<pre class="term wrap logview{{if $d.Matches}} mt12{{end}}">{{range $d.Important}}<span class="ln-err">{{.}}</span>{{end}}</pre>
+      {{else if $d.LogError}}<div class="muted">{{$d.LogError}}</div>
+      {{else}}<div class="muted">No error lines were found in the log.</div>{{end}}
+      <div class="small mt12">The whole log is in <a href="?mode=full">Full mode</a>, on the Logs tab.</div>
+    </div>
+  </div>
+  <div>
+    <div class="problem"><div class="ph"><b>What runs in it</b></div><div class="pb"><ul class="checks">
+      {{range $d.Containers}}<li><i class="ic {{.Icon}}">{{if eq .Icon "good"}}✓{{else if eq .Icon "crit"}}✕{{else if eq .Icon "warn"}}▲{{else}}…{{end}}</i><span><b>{{.Name}}</b>: {{if eq .State "running"}}running normally{{else}}{{.State}}{{end}}{{if .Restarts}}, restarted {{.Restarts}} times{{with .ExitPlain}}; the last time, {{.}}{{end}}{{end}}</span></li>{{end}}
+    </ul></div></div>
+    <div class="small mt12"><a href="?mode=full">Show technical details</a></div>
+  </div>
+</div>
+{{else}}
+<div class="pod-layout">
+  <div class="card flush">
+    <div class="tabs" role="tablist">
+      <button type="button" class="on" data-tab="describe" role="tab">Describe</button>
+      <button type="button" data-tab="events" role="tab">Events</button>
+      <button type="button" data-tab="logs" role="tab">Logs</button>
+      <button type="button" data-tab="yaml" role="tab">YAML</button>
+    </div>
+    <div class="tabpane on" id="tab-describe"><pre class="term" id="describeOut">Loading…</pre></div>
+    <div class="tabpane" id="tab-events"><div id="eventsOut" class="muted">Loading…</div></div>
+    <div class="tabpane" id="tab-logs">
+      <div class="logbar">
+        <select class="select" id="logContainer" aria-label="Container">{{range $d.Containers}}<option value="{{.Name}}">{{.Name}}{{if .Init}} (init){{end}}</option>{{end}}</select>
+        <label class="row small"><input type="checkbox" id="logPrevious"> previous run</label>
+        <select class="select" id="logTail" aria-label="Lines"><option value="200">last 200</option><option value="500" selected>last 500</option><option value="2000">last 2000</option><option value="10000">last 10000</option></select>
+        <button class="btn sm" type="button" id="logLoad">Load</button>
+        <button class="btn sm" type="button" id="logFollow" aria-pressed="false">Follow</button>
+        <input class="input grow" id="logFilter" placeholder="Filter lines (text or /regex/)" spellcheck="false">
+      </div>
+      <pre class="term logview" id="logOut"></pre>
+      <div class="small muted mt8" id="logInfo"></div>
+    </div>
+    <div class="tabpane" id="tab-yaml"><div class="small muted mb12">Managed fields are removed and values of secret-looking environment variables are masked.</div><pre class="term" id="yamlOut">Loading…</pre></div>
+  </div>
+  <div>
+    <div class="problem"><div class="ph"><b>Containers</b></div><div class="pb"><div class="containers">
+      {{range $d.Containers}}<div class="ctr"><div class="row"><i class="ic {{.Icon}}">{{if eq .Icon "good"}}✓{{else if eq .Icon "crit"}}✕{{else if eq .Icon "warn"}}▲{{else}}…{{end}}</i><b>{{.Name}}</b>{{if .Init}}<span class="tag">init</span>{{end}}<span class="small muted right-a">restarts {{.Restarts}}</span></div>
+        <dl class="kv"><dt>Image</dt><dd class="mono small">{{.Image}}</dd><dt>State</dt><dd>{{.State}}{{with .Detail}}: {{.}}{{end}}</dd>{{with .LastExit}}<dt>Last exit</dt><dd>{{.}}</dd>{{end}}{{with .ExitMeans}}<dt>Code means</dt><dd class="small">{{.}}</dd>{{end}}{{with .Crash}}<dt>Log says</dt><dd class="small">{{range .}}<div>{{.Title}}</div>{{end}}</dd>{{end}}</dl></div>{{end}}
+    </div></div></div>
+    {{with $d.Secrets}}<div class="problem mt12"><div class="ph"><b>Secrets</b></div><div class="pb">
+      {{range .}}<div class="mb12">{{if .Link}}<a class="mono" href="{{.Link}}"><b>{{.Name}}</b></a>{{else}}<b class="mono">{{.Name}}</b>{{end}}<ul class="plain small sec">{{range .How}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
+    </div></div>{{end}}
+    {{range $d.Findings}}
+    <div class="problem mt12"><div class="ph {{pri .Priority}}">{{template "prichip" .Priority}}<a href="/c/{{$c}}/problems/{{.ID}}"><b>{{.Title}}</b></a></div>
+      <div class="pb"><div class="small"><code>{{.RuleID}}</code> · <span class="mono">{{ref .Resource}}</span>{{if .IsSymptom}} · symptom{{end}}</div><div>{{.Summary}}</div>
+        {{with .Remedy.LikelyCause}}<div><div class="lab">Likely cause</div>{{.}}</div>{{end}}
+        {{if not .IsSymptom}}<div><div class="lab">Fix</div>{{template "steps" (dict "f" . "basic" false)}}</div>{{end}}
+      </div></div>
+    {{else}}<div class="notice good mt12"><i class="ic good">✓</i><span>No findings for this pod or its owner.</span></div>{{end}}
+  </div>
+</div>
+<script src="/static/pod.js" defer></script>
+{{end}}
+</div>
+{{end}}

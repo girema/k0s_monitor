@@ -1,0 +1,104 @@
+{{define "content"}}{{$d := .Data}}{{$st := $d.State}}{{$c := .Cluster.Name}}{{$basic := .Basic}}{{$q := $d.Q}}
+<div class="page-head">
+  <div>
+    <h1>{{if eq $q.Tab "services"}}Services{{else if $basic}}Apps{{else}}Workloads{{end}}</h1>
+    <div class="sub">{{if eq $q.Tab "services"}}{{if $basic}}The addresses apps use to reach each other, and which app parts answer on them{{else}}Services with their ports, ready endpoints and the workloads they select{{end}}{{else}}{{if $basic}}Everything that runs in the cluster. Open an app to see its parts, and a part for its log.{{else}}Deployments, StatefulSets, DaemonSets, CronJobs, Jobs and bare Pods with their pods. Open a pod for describe, events, logs and YAML.{{end}}{{end}}</div>
+  </div>
+</div>
+{{if eq $st.Status "unreachable"}}<div class="notice bad"><i class="ic crit">✕</i><span>{{if $basic}}The cluster can't be reached. This is the last known state.{{else}}Unreachable: what you see is stale.{{end}} {{errorText $st.Error}}</span></div>{{end}}
+
+<div class="stat-row">
+  <div class="stat"><div class="lab">{{if $basic}}Apps{{else}}Workloads{{end}}</div><div class="val">{{$d.Total}}</div><div class="foot">{{if $d.Others}}plus {{$d.Others}} {{if $basic}}jobs and single parts{{else}}Jobs, bare Pods and others{{end}}{{else if $basic}}long-running and scheduled{{else}}deploy, sts, ds and cj{{end}}</div></div>
+  <div class="stat"><div class="lab">{{if $d.Bad}}<i class="ic crit" aria-hidden="true">!</i>{{end}}With problems</div><div class="val">{{$d.Bad}}</div><div class="foot">{{if $d.BadText}}{{$d.BadText}}{{if gt $d.Bad 1}} and more{{end}}{{else}}none{{end}}</div></div>
+  <div class="stat"><div class="lab">{{if $d.NotRunning}}<i class="ic warn" aria-hidden="true">▲</i>{{end}}{{if $basic}}Not running fully{{else}}Not ready or failed{{end}}</div><div class="val">{{$d.NotRunning}}</div><div class="foot">{{if $d.NotRunningText}}{{$d.NotRunningText}}{{else if $basic}}everything runs{{else}}all ready{{end}}</div></div>
+  <div class="stat"><div class="lab">{{if $basic}}App parts{{else}}Pods{{end}}</div><div class="val">{{$d.Pods}}</div><div class="foot">{{if $d.Restarting}}{{$d.Restarting}} restarted at least once{{else}}no restarts{{end}}</div></div>
+  <div class="stat"><div class="lab">{{if $d.NoEndpoints}}<i class="ic warn" aria-hidden="true">▲</i>{{end}}Services</div><div class="val">{{$d.ServiceCount}}</div><div class="foot">{{if $d.NoEndpoints}}{{$d.NoEndpoints}} {{if $basic}}reach nothing{{else}}without ready endpoints{{end}}{{else if $basic}}all reach their app{{else}}all have ready endpoints{{end}}</div></div>
+</div>
+
+<form class="filters" method="get" role="search">
+  <div class="seg" role="group" aria-label="Show">
+    <a class="{{if ne $q.Tab "services"}}on{{end}}" href="{{$d.AppsLink}}">{{if $basic}}Apps{{else}}Workloads{{end}}</a><a class="{{if eq $q.Tab "services"}}on{{end}}" href="{{$d.ServicesLink}}">Services</a>{{with $d.SecretsLink}}<a href="{{.}}">Secrets</a>{{end}}
+  </div>
+  {{if eq $q.Tab "services"}}<input type="hidden" name="tab" value="services">{{end}}
+  <input class="input findbox" type="search" name="q" value="{{$q.Query}}" id="search" data-filter="#rows" autocomplete="off" spellcheck="false"
+    placeholder="{{if $basic}}Search by name, image or server{{else}}Search name, namespace, image, node, status{{end}}  ( / )" aria-label="Search">
+  <select class="select" name="ns" data-autosubmit aria-label="Namespace">
+    <option value="">{{if $basic}}All namespaces{{else}}Namespace: all{{end}}</option>
+    {{range $d.Namespaces}}<option value="{{.}}"{{if eq . $q.Namespace}} selected{{end}}>{{.}}</option>{{end}}
+  </select>
+  <label class="row small sec"><input type="checkbox" name="problems" value="1" data-autosubmit{{if $q.OnlyBad}} checked{{end}}> Only problems</label>
+  {{if $basic}}<label class="row small sec" title="k0s's own parts in kube-system"><input type="checkbox" name="system" value="1" data-autosubmit{{if $q.SystemAsked}} checked{{end}}> Show k0s system{{if $d.HiddenSystem}} ({{$d.HiddenSystem}}){{end}}</label>{{end}}
+  <noscript><button class="btn" type="submit">Search</button></noscript>
+  <span class="small muted right-a" aria-live="polite"><span data-filter-count>{{$d.Shown}}</span> shown</span>
+</form>
+
+<div class="card flush" id="rows">
+  <div class="tbl-wrap">
+  {{if eq $q.Tab "services"}}
+  <table class="t svcs">
+    {{if $basic}}
+    <thead><tr><th>Service</th><th>Reaches</th><th>State</th><th>Ports</th><th>Problem</th></tr></thead>
+    {{range $s := $d.Services}}<tbody data-search="{{.Search}}"{{if .Hidden}} class="hidden"{{end}}><tr>
+      <td><b class="res nowrap">{{.Name}}</b><div class="res-sub">{{.Namespace}}{{if .Ingress}} · reachable from outside{{end}}</div></td>
+      <td class="small">{{range $i, $a := .Apps}}{{if $i}}, {{end}}<a href="{{$a.Link}}">{{$a.Name}}</a>{{else}}<span class="muted">—</span>{{end}}</td>
+      <td><span class="st"><i class="ic {{.Icon}}" aria-hidden="true">{{.Mark}}</i>{{.Plain}}</span></td>
+      <td class="small">{{.Ports}}</td>
+      <td class="small">{{with .Top}}{{template "urgchip" .Priority}} <a href="/c/{{$c}}/problems/{{.ID}}">{{.Plain.Title}}</a>{{else}}<span class="muted">—</span>{{end}}</td>
+    </tr></tbody>{{end}}
+    {{else}}
+    <thead><tr><th>Service</th><th>Type</th><th>Cluster IP</th><th>Ports</th><th>Endpoints</th><th>Selects</th><th>Pods</th><th>Problem</th></tr></thead>
+    {{range $s := $d.Services}}<tbody data-search="{{.Search}}"{{if .Hidden}} class="hidden"{{end}}><tr>
+      <td><b class="res nowrap">{{.Name}}</b><div class="res-sub">{{.Namespace}}{{if .Ingress}} · Ingress backend{{end}}</div></td>
+      <td class="small">{{.Type}}{{with .External}}<div class="res-sub">{{.}}</div>{{end}}</td>
+      <td class="small mono nowrap">{{or .ClusterIP "—"}}</td>
+      <td class="small">{{.Ports}}</td>
+      <td class="nowrap"><span class="st"><i class="ic {{.Icon}}" aria-hidden="true">{{.Mark}}</i>{{.Status}}</span></td>
+      <td class="small">{{range $i, $a := .Apps}}{{if $i}}<br>{{end}}<a class="nowrap" href="{{$a.Link}}">{{$a.Name}}</a>{{else}}<span class="muted">—</span>{{end}}</td>
+      <td class="small">{{range $i, $p := .Pods}}{{if lt $i 3}}{{if $i}}<br>{{end}}<a class="mono" href="{{$p.Link}}">{{$p.Name}}</a>{{end}}{{else}}<span class="muted">—</span>{{end}}{{if gt (len .Pods) 3}}<div class="res-sub">and {{add (len .Pods) -3}} more</div>{{end}}</td>
+      <td class="small">{{with .Top}}{{template "prichip" .Priority}} <a href="/c/{{$c}}/problems/{{.ID}}">{{.Title}}</a>{{else}}<span class="muted">—</span>{{end}}</td>
+    </tr></tbody>{{end}}
+    {{end}}
+    <tbody data-filter-empty{{if $d.Shown}} class="hidden"{{end}}><tr><td colspan="8"><div class="empty">{{if $d.Services}}No Services match the search.{{else}}No Services{{if or $q.Namespace $q.OnlyBad}} match{{end}}.{{end}}</div></td></tr></tbody>
+  </table>
+  {{else}}
+  <table class="t apps">
+    {{if $basic}}
+    <thead><tr><th class="w30"></th><th>App</th><th>How it runs</th><th class="r">Parts</th><th>Problem</th></tr></thead>
+    {{range $a := $d.Apps}}<tbody id="{{.Anchor}}" data-search="{{.Search}}" class="collapsed{{if .Hidden}} hidden{{end}}">
+      <tr><td>{{if .Pods}}<button class="caret" type="button" aria-label="Show or hide its parts" data-toggle-body>▼</button>{{end}}</td>
+        <td>{{if .Friendly}}<b class="res" title="{{.About}}">{{.Friendly}}</b><div class="res-sub">{{.Name}}, {{.Noun}} in {{.Namespace}}{{with .Docs}} · <a href="{{.}}" target="_blank" rel="noopener noreferrer">documentation</a>{{end}}</div>{{else}}<b class="res">{{.Name}}</b><div class="res-sub">{{.Noun}} in {{.Namespace}}</div>{{end}}</td>
+        <td><span class="st"><i class="ic {{.Icon}}" aria-hidden="true">{{.Mark}}</i>{{.Plain}}</span>{{with .Detail}}<div class="res-sub">{{.}}</div>{{end}}</td>
+        <td class="r">{{len .Pods}}</td>
+        <td class="small">{{with .Top}}{{template "urgchip" .Priority}} <a href="/c/{{$c}}/problems/{{.ID}}">{{.Plain.Title}}</a>{{if gt $a.Problems 1}} <span class="muted">and {{add $a.Problems -1}} more</span>{{end}}{{else}}<span class="muted">—</span>{{end}}</td></tr>
+      {{range .Pods}}<tr class="child"><td></td>
+        <td colspan="2"><div class="indent"><span class="st"><i class="ic {{.Icon}}" aria-hidden="true">{{.Mark}}</i><a class="mono" href="{{.Link}}">{{.Name}}</a></span><div class="res-sub">{{if .Node}}on server {{.Node}} · {{end}}started {{.Age}} ago{{if .Restarts}} · restarted {{.Restarts}} times{{end}}</div></div></td>
+        <td colspan="2" class="r nowrap"><a class="btn sm" href="{{.Link}}">Open</a> <a class="btn sm" href="{{.Link}}?mode=full#logs">Whole log</a></td></tr>{{end}}
+    </tbody>{{end}}
+    {{else}}
+    <thead><tr><th class="w30"></th><th>Workload</th><th>Status</th><th class="r">Ready</th><th class="r">Restarts</th><th>Problem</th><th>Node</th><th class="r">Age</th></tr></thead>
+    {{range $a := $d.Apps}}<tbody id="{{.Anchor}}" data-search="{{.Search}}" class="collapsed{{if .Hidden}} hidden{{end}}">
+      <tr><td>{{if .Pods}}<button class="caret" type="button" aria-label="Show or hide its pods" data-toggle-body>▼</button>{{end}}</td>
+        <td><span class="kind">{{.Short}}</span> <b class="res">{{.Name}}</b>{{with .Friendly}} <span class="from-pack" title="{{$a.About}}">{{.}}</span>{{end}}<div class="res-sub trunc"{{with .Images}} title="{{join . ", "}}"{{end}}>{{.Namespace}}{{with .Images}} · <span class="mono">{{index . 0}}</span>{{if gt (len .) 1}} +{{add (len .) -1}}{{end}}{{end}}</div></td>
+        <td class="nowrap"><span class="st"><i class="ic {{.Icon}}" aria-hidden="true">{{.Mark}}</i>{{.Status}}</span>{{with .Detail}}<div class="res-sub">{{.}}</div>{{end}}</td>
+        <td class="r mono nowrap">{{.Ready}}</td>
+        <td class="r">{{.Restarts}}</td>
+        <td class="small">{{with .Top}}{{template "prichip" .Priority}} <a href="/c/{{$c}}/problems/{{.ID}}">{{.Title}}</a>{{if gt $a.Problems 1}} <span class="muted">+{{add $a.Problems -1}}</span>{{end}}{{else}}<span class="muted">—</span>{{end}}</td>
+        <td class="small">{{join .Nodes ", "}}</td>
+        <td class="r nowrap">{{.Age}}</td></tr>
+      {{range .Pods}}<tr class="child"><td></td>
+        <td><div class="indent"><a class="mono" href="{{.Link}}">{{.Name}}</a>{{with .IP}}<div class="res-sub mono">{{.}}</div>{{end}}</div></td>
+        <td class="nowrap"><span class="st"><i class="ic {{.Icon}}" aria-hidden="true">{{.Mark}}</i>{{.Status}}</span></td>
+        <td class="r mono">{{.Ready}}</td>
+        <td class="r">{{.Restarts}}</td>
+        <td class="small"><a href="{{.Link}}#logs">Logs</a> · <a href="{{.Link}}">Describe</a></td>
+        <td class="small">{{.Node}}</td>
+        <td class="r nowrap">{{.Age}}</td></tr>{{end}}
+    </tbody>{{end}}
+    {{end}}
+    <tbody data-filter-empty{{if $d.Shown}} class="hidden"{{end}}><tr><td colspan="8"><div class="empty">{{if $d.Apps}}Nothing matches the search.{{else if or $q.Namespace $q.OnlyBad}}Nothing matches the filters.{{else if $basic}}No apps yet.{{else}}No workloads.{{end}}</div></td></tr></tbody>
+  </table>
+  {{end}}
+  </div>
+</div>
+{{if and $basic $d.HiddenSystem (not $q.SystemAsked)}}<div class="small muted mt8">{{$d.HiddenSystem}} parts of k0s itself (in kube-system) are not listed. Check "Show k0s system" to see them.</div>{{end}}
+{{end}}

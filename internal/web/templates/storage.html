@@ -1,0 +1,106 @@
+{{define "content"}}{{$d := .Data}}{{$st := $d.State}}{{$c := .Cluster.Name}}{{$basic := .Basic}}
+<div class="page-head">
+  <div>
+    <h1>Storage</h1>
+    <div class="sub">{{if $basic}}{{plural $d.Claims "storage volume"}} for your apps: how full each one is, and when it will be full{{else}}PersistentVolumeClaims, volume usage from Prometheus (kubelet volume metrics), and a forecast from its history{{end}}</div>
+  </div>
+</div>
+{{if eq $st.Status "unreachable"}}<div class="notice bad"><i class="ic crit">✕</i><span>{{if $basic}}The cluster can't be reached. This is the last known state.{{else}}Unreachable: what you see is stale.{{end}} {{errorText $st.Error}}</span></div>{{end}}
+{{with $d.NoUsage}}<div class="notice warn"><i class="ic warn">▲</i><span>{{.}}{{if not $basic}} See <a href="/c/{{$c}}/settings">Connection &amp; settings</a> for what was found.{{end}}</span></div>{{end}}
+
+<div class="stat-row">
+  <div class="stat"><div class="lab">{{if $basic}}Storage volumes{{else}}PVCs{{end}}</div><div class="val">{{$d.Claims}}</div><div class="foot">{{if $basic}}{{$d.Bound}} in use{{else}}{{$d.Bound}} Bound{{end}}{{if $d.Pending}} · {{$d.Pending}} {{if $basic}}waiting{{else}}Pending{{end}}{{end}}</div></div>
+  <div class="stat"><div class="lab">{{if $d.Over80}}<i class="ic warn" aria-hidden="true">▲</i>{{end}}{{if $basic}}Almost full{{else}}≥ 80% used{{end}}</div><div class="val">{{$d.Over80}}</div><div class="foot">{{if $basic}}80% or more used{{else}}by space{{end}}</div></div>
+  <div class="stat"><div class="lab">{{if $d.FullSoon}}<i class="ic crit" aria-hidden="true">!</i>{{end}}Full within 24 h</div><div class="val">{{$d.FullSoon}}</div><div class="foot">{{if $d.FullSoonText}}{{$d.FullSoonText}}{{else}}at the current growth{{end}}</div></div>
+  <div class="stat"><div class="lab">{{if $basic}}Server disks almost full{{else}}Node filesystems ≥ 85%{{end}}</div><div class="val">{{$d.NodeFSHigh}}</div><div class="foot">{{if $d.NodeFSText}}{{$d.NodeFSText}}{{else}}the disk holding /var/lib/k0s{{end}}</div></div>
+  <div class="stat"><div class="lab">{{if $basic}}Storage type for new volumes{{else}}Default StorageClass{{end}}</div><div class="val small-val">{{if $d.DefaultClass}}{{$d.DefaultClass}}{{else}}none{{end}}</div><div class="foot">{{if $d.DefaultClass}}{{if $d.DefaultExpand}}{{if $basic}}volumes can grow{{else}}expansion allowed{{end}}{{else}}{{if $basic}}volumes can't grow{{else}}no expansion{{end}}{{end}}{{else}}k0s installs none{{end}}</div></div>
+</div>
+
+{{if not $basic}}
+<form class="filters" method="get">
+  <select class="select" name="ns" data-autosubmit aria-label="Namespace">
+    <option value="">Namespace: all</option>
+    {{range $d.Namespaces}}<option value="{{.}}"{{if eq . $d.Namespace}} selected{{end}}>{{.}}</option>{{end}}
+  </select>
+  <label class="row small sec"><input type="checkbox" name="problems" value="1" data-autosubmit{{if $d.OnlyBad}} checked{{end}}> Only problems</label>
+  <noscript><button class="btn" type="submit">Filter</button></noscript>
+  <span class="small muted right-a">{{$d.Levels}}</span>
+</form>
+{{end}}
+
+<div class="card flush">
+  <div class="tbl-wrap">
+  <table class="t storage">
+    {{if $basic}}
+    <thead><tr><th>Storage of</th><th>How full</th><th>Full</th><th>Used by</th></tr></thead>
+    <tbody>
+    {{range $d.Rows}}<tr{{if .Selected}} class="sel"{{end}}>
+      <td><a class="res" href="{{.Link}}">{{.Owner}}</a>{{if ne .Owner .Name}}<div class="res-sub">{{.Name}}</div>{{end}}</td>
+      <td>{{if .Note}}<span class="small">{{if eq .Phase "Pending"}}Not created yet{{else}}{{.Note}}{{end}}</span>{{else}}{{template "usage" .Used}}{{with .UsedPlain}}<div class="res-sub">{{.}}</div>{{end}}{{end}}</td>
+      <td class="nowrap">{{if .FullIcon}}<span class="st"><i class="ic {{.FullIcon}}" aria-hidden="true">{{.FullMark}}</i><b>{{.FullPlain}}</b></span>{{else}}<span class="muted small">{{.FullPlain}}</span>{{end}}</td>
+      <td class="small">{{range $i, $m := .MountedBy}}{{if $i}}, {{end}}{{$m.Pod}}{{else}}<span class="muted">nothing</span>{{end}}</td>
+    </tr>
+    {{else}}<tr><td colspan="4"><div class="empty">No storage volumes.</div></td></tr>{{end}}
+    </tbody>
+    {{else}}
+    <thead><tr><th>PVC</th><th>StorageClass</th><th class="r">Size</th><th>Used</th><th class="r">Inodes</th><th>Last 24 h</th><th>Full in</th><th>Mounted by</th></tr></thead>
+    <tbody>
+    {{range $d.Rows}}<tr{{if .Selected}} class="sel"{{end}}>
+      <td><a class="res" href="{{.Link}}">{{.Name}}</a><div class="res-sub">{{.Namespace}} · {{.Phase}}</div></td>
+      <td class="small">{{.Class}}</td>
+      <td class="r">{{.Size}}</td>
+      {{if .Note}}<td colspan="4" class="small">{{if .Top}}<i class="ic info" aria-hidden="true">i</i> <a href="/c/{{$c}}/problems/{{.Top.ID}}">{{.Note}}</a> ({{.Top.Priority}} · {{.Top.Score}}){{else}}{{.Note}}{{end}}</td>
+      {{else}}
+      <td>{{template "usage" .Used}}{{with .UsedText}}<div class="res-sub">{{.}}</div>{{end}}</td>
+      <td class="r">{{if .Inodes.Known}}{{if .Inodes.Cls}}<i class="ic warn" aria-hidden="true">▲</i> {{end}}{{.Inodes.Pct}}%{{else}}<span class="muted">—</span>{{end}}</td>
+      <td>{{if .Spark}}<svg class="spark" data-spark="{{.Spark}}" role="img" aria-label="{{.SparkLabel}}"></svg>{{else}}<span class="muted small">—</span>{{end}}</td>
+      <td class="nowrap">{{if .FullIcon}}<span class="st"><i class="ic {{.FullIcon}}" aria-hidden="true">{{.FullMark}}</i><b>{{.FullIn}}</b></span>{{else}}<span class="muted small">{{.FullIn}}</span>{{end}}</td>
+      {{end}}
+      <td class="small">{{range $i, $m := .MountedBy}}{{if $i}}<br>{{end}}<a href="{{$m.Link}}">{{$m.Pod}}</a>{{with $m.Node}} · {{.}}{{end}}{{else}}<span class="muted">none</span>{{end}}</td>
+    </tr>
+    {{else}}<tr><td colspan="8"><div class="empty">No volume claims{{if or $d.Namespace $d.OnlyBad}} match{{end}}.</div></td></tr>{{end}}
+    </tbody>
+    {{end}}
+  </table>
+  </div>
+</div>
+
+{{with $d.Source}}<div class="small muted mt8">{{.}}</div>{{end}}
+
+{{with $d.Detail}}{{$top := .Top}}
+<div class="card mt16" id="detail">
+  <div class="card-head"><h2>{{if $basic}}{{if $top}}{{$top.Plain.Title}}{{else}}The storage of {{.Row.Owner}}{{end}}{{else}}{{.Row.Namespace}}/{{.Row.Name}}{{end}}</h2>
+    {{with $top}}{{if $basic}}{{template "urgchip" .Priority}}{{else}}{{template "prichip" .Priority}}<span class="small sec">{{$.Data.Detail.Row.FullIn}}</span>{{end}}<span class="end"><a class="btn sm" href="/c/{{$c}}/problems/{{.ID}}">{{if $basic}}How to fix{{else}}Resolve{{end}}</a></span>{{end}}</div>
+  <div class="pvc-detail">
+    <div>
+      <div class="facts-grid">
+        {{if $basic}}
+        <div><div class="k">Used</div><div class="v">{{or .UsedPlain "—"}}</div></div>
+        <div><div class="k">Grows by</div><div class="v">{{or .GrowthPlain "—"}}</div></div>
+        <div><div class="k">Usually grows by</div><div class="v">{{or .BaselinePlain "—"}}</div></div>
+        {{else}}
+        <div><div class="k">Used</div><div class="v">{{or .UsedText "—"}}</div></div>
+        <div><div class="k">Growth now</div><div class="v">{{or .GrowthNow "—"}}</div></div>
+        <div><div class="k">7-day baseline</div><div class="v">{{or .Baseline "—"}}</div></div>
+        {{end}}
+        <div><div class="k">{{if $basic}}Full{{else}}Projected 100%{{end}}</div><div class="v">{{or .Full "—"}}</div></div>
+      </div>
+      {{with .Chart}}{{template "chart" .}}{{end}}
+    </div>
+    <div>
+      {{with $top}}
+        {{if $basic}}
+        <p class="sec">{{.Plain.WhatHappened}}{{with .Plain.Why}} {{.}}{{end}}</p>
+        <p>{{.Plain.WhatToDo}}</p>
+        {{else}}
+        {{with .Remedy.LikelyCause}}<div class="sub-h">Likely cause</div><p class="small sec">{{.}}</p>{{end}}
+        <div class="sub-h">Fix</div>
+        {{template "steps" (dict "f" . "basic" false)}}
+        {{end}}
+      {{else}}<div class="small muted">No problems with this volume.</div>{{end}}
+    </div>
+  </div>
+</div>
+{{end}}
+<script src="/static/charts.js" defer></script>
+{{end}}
